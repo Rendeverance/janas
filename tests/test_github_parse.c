@@ -296,6 +296,9 @@ static void seen(void)
 {
     char dir[512];
     const char *home = getenv("HOME");
+    /* ~/tmp first: a fresh machine (GitHub's runner) has none */
+    snprintf(dir, sizeof dir, "%s/tmp", home ? home : ".");
+    mkdir(dir, 0700);
     snprintf(dir, sizeof dir, "%s/tmp/janas-github-test-%d", home ? home : ".",
              (int)getpid());
     if (mkdir(dir, 0700) != 0) {
