@@ -1,24 +1,26 @@
 # Janas for Linux x86-64
 
-**Qwen3-Next-80B, a 48 GB model, on a laptop with 32 GB of memory: 37 tok/s with its own draft block, 24 without, where llama.cpp manages 2.8 on the same laptop.** Reading a prompt of 1,024 tokens: 62 tok/s against 16. Janas was faster than llama.cpp on every model compared on that laptop (Intel Core Ultra 9 185H, its integrated Arc GPU, 32 GB of memory, an NVMe SSD), measured on 9 and 10 October 2026:
+**Qwen3-Next-80B, a 48 GB model, on a laptop with 32 GB of memory: 37 tok/s with its own draft block, 24 without, where llama.cpp manages 2.8 on the same laptop.** Reading a prompt of 1,024 tokens: 62 tok/s against 16. Janas-LLM was faster than llama.cpp on every model compared on that laptop (Debian 13 Linux with kernel 6.12.107, Intel Core Ultra 9 185H, its integrated Arc GPU with Mesa 26.1.6, 32 GB of DDR5-5600 memory, an NVMe SSD), measured on 9-11 October 2026:
 
-| Model | reading a prompt: Janas | llama.cpp | writing: Janas | llama.cpp |
+| Model | reading 1,024 tokens: Janas-LLM | llama.cpp | writing: Janas-LLM | llama.cpp |
 |---|---:|---:|---:|---:|
-| Qwen3-0.6B | 938 tok/s | 687 tok/s | 131 tok/s | 44 tok/s |
-| Qwen3.5-2B | 441 tok/s | 323 tok/s | 52 tok/s | 28 tok/s |
-| Qwen3-4B | 193 tok/s | 164 tok/s | 27 tok/s | 18 tok/s |
-| Qwen3.5-9B | 111 tok/s | 78 tok/s | 14 tok/s | 8.7 tok/s |
-| Qwen3-30B-A3B | 135 tok/s | 122 tok/s | 32 tok/s | 15 tok/s |
-| Qwen3.6-35B-A3B | 88 tok/s | 78 tok/s | 20 tok/s | 11 tok/s |
 | Qwen3-Next-80B-A3B (48.4 GB, more than the memory) | 62 tok/s | 16 tok/s | 24 tok/s | 2.8 tok/s |
-| Gemma-4-E2B-it | 191 tok/s | 150 tok/s | 38 tok/s | 19 tok/s |
-| Gemma-4-E4B-it | 122 tok/s | 109 tok/s | 20 tok/s | 15 tok/s |
-| Gemma-4-12B-it | 65 tok/s | 46 tok/s | 9.9 tok/s | 7.1 tok/s |
+| Qwen3-Coder-Next (48.4 GB, more than the memory) | 66 tok/s | 14 tok/s | 22 tok/s | 2.2 tok/s |
+| Qwen3.6-35B-A3B | 104 tok/s | 79 tok/s | 19 tok/s | 12 tok/s |
+| Qwen3-30B-A3B | 135 tok/s | 122 tok/s | 32 tok/s | 15 tok/s |
 | Gemma-4-26B-A4B-it | 84 tok/s | 76 tok/s | 18 tok/s | 12 tok/s |
+| Gemma-4-12B-it | 65 tok/s | 46 tok/s | 9.9 tok/s | 7.1 tok/s |
+| Qwen3.5-9B | 111 tok/s | 78 tok/s | 14 tok/s | 8.7 tok/s |
+| Gemma-4-E4B-it | 122 tok/s | 109 tok/s | 20 tok/s | 15 tok/s |
+| Qwen3-4B | 193 tok/s | 164 tok/s | 27 tok/s | 18 tok/s |
+| Gemma-4-E2B-it | 191 tok/s | 150 tok/s | 38 tok/s | 19 tok/s |
+| Qwen3.5-2B | 441 tok/s | 323 tok/s | 52 tok/s | 28 tok/s |
+| Qwen3.5-0.8B | 799 tok/s | 519 tok/s | 109 tok/s | 32 tok/s |
+| Qwen3-0.6B | 939 tok/s | 670 tok/s | 130 tok/s | 45 tok/s |
 
-Qwen3-0.6B in one round, the others as the project's README gives them. On another machine the figures will be other ones: `janas-bench` measures yours (below). How they were taken, and everything else: <https://github.com/prabanta-dev/janas>.
+The 3-bit Qwen3-30B of the catalog is the one exception: it reads a prompt slower than llama.cpp (100 tok/s against 112), its Q3_K weights not on the GPU's fast prompt yet. On another machine the figures will be other ones: `janas-bench` measures yours (below). How they were taken, and everything else: <https://github.com/prabanta-dev/janas>.
 
-Janas runs large language models on ordinary computers, with or without a GPU, mixtures of experts larger than the memory among them: the weights stay on disk, the experts each token needs are read from the SSD and the ones that keep coming back stay in memory. It is written in C and needs nothing but the system's C library; a GPU is used through its Vulkan driver when there is one.
+Janas-LLM, the inference engine of Janas, runs large language models on ordinary computers, with or without a GPU, mixtures of experts larger than the memory among them: the weights stay on disk, the experts each token needs are read from the SSD and the ones that keep coming back stay in memory. It is written in C and needs nothing but the system's C library; a GPU is used through its Vulkan driver when there is one.
 
 ## Start
 
