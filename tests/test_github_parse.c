@@ -10,6 +10,7 @@
  * directory of its own under ~/tmp.
  * The sources belong to the program, so they are compiled in here.
  */
+#define _GNU_SOURCE /* memmem: Ubuntu 22.04's glibc (2.35) declares it only so */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

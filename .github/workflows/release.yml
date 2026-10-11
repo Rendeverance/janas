@@ -30,7 +30,7 @@ jobs:
   linux-x86_64:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: The shaders' compiler and the Vulkan headers
         run: |
@@ -101,7 +101,7 @@ jobs:
 
       - name: Keep the package (run by hand)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.PACKAGE }}
           path: |
