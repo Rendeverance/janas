@@ -117,3 +117,74 @@ jobs:
             "$PACKAGE.tar.gz" "$PACKAGE.tar.gz.sha256" \
             --title "Janas $GITHUB_REF_NAME" \
             --notes "Janas for Linux x86-64 (Ubuntu 22.04, Debian 12 and later). Unpack it and start: ./janas-get list, then ./janas-chat <model>. What changed: ChangeLog.md. The SHA-256 of every file: SHA256SUMS in the package."
+
+  # The wiki, made from the same pages as the repository: README.md becomes
+  # Home, each docs/*.md a page named after its title. It is never edited
+  # by hand: every tag writes it again whole, so it cannot drift from the
+  # release. Links between the pages become the wiki's own; links to the
+  # sources point to the tag's files on GitHub.
+  wiki:
+    needs: linux-x86_64
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Write the wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/wiki"
+          git clone -q "https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.wiki.git" "$W"
+          find "$W" -maxdepth 1 -name '*.md' -delete
+          BLOB="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME"
+          # the order of the README's list, then any page not in it
+          ORDER="features models chat library serving code-completion tools hardware"
+          for f in docs/*.md; do
+            n=$(basename "$f" .md)
+            case " $ORDER " in *" $n "*) ;; *) ORDER="$ORDER $n" ;; esac
+          done
+          # a page's name: its title, spaces made dashes
+          PAGES=()
+          for n in $ORDER; do
+            t=$(head -1 "docs/$n.md" | sed -E 's/^# //')
+            PAGES+=("$n=${t// /-}")
+          done
+          names() {  # @@name@@ -> the page's name
+            for p in "${PAGES[@]}"; do
+              printf 's#@@%s@@#%s#g\n' "${p%%=*}" "${p#*=}"
+            done
+          }
+          # Home: docs/x.md -> the page, other files -> the tag's sources
+          sed -E -e 's#\]\(docs/([a-z-]+)\.md(\#[^)]*)?\)#](@@\1@@\2)#g' \
+                 -e "s#\\]\\(([A-Za-z][^):@]*)\\)#](${BLOB}/\\1)#g" README.md |
+            sed -E -f <(names) > "$W/Home.md"
+          for n in $ORDER; do
+            t=$(head -1 "docs/$n.md" | sed -E 's/^# //')
+            tail -n +2 "docs/$n.md" | sed -E '1{/^$/d}' |
+              sed -E -e 's#\]\(\.\./README\.md(\#[^)]*)?\)#](Home\1)#g' \
+                     -e "s#\\]\\(\\.\\./([^)]*)\\)#](${BLOB}/\\1)#g" \
+                     -e 's#\]\(([a-z-]+)\.md(\#[^)]*)?\)#](@@\1@@\2)#g' |
+              sed -E -f <(names) > "$W/${t// /-}.md"
+          done
+          # no link may be left pointing at a file the wiki does not have
+          if grep -n -E '\]\([^):]*\.md(#[^)]*)?\)|@@' "$W"/*.md; then
+            echo "a link the wiki cannot follow"; exit 1
+          fi
+          {
+            echo "**[Home](Home)**"
+            echo
+            for p in "${PAGES[@]}"; do
+              v=${p#*=}
+              echo "- [${v//-/ }]($v)"
+            done
+          } > "$W/_Sidebar.md"
+          echo "Written from the repository's README.md and docs/ at [$GITHUB_REF_NAME](https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME): changes go there, not here." > "$W/_Footer.md"
+          cd "$W"
+          git add -A
+          if git diff --cached --quiet; then echo "the wiki is already up to date"; exit 0; fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "The wiki of $GITHUB_REF_NAME"
+          git push -q origin HEAD

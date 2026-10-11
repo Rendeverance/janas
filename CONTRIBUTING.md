@@ -12,7 +12,7 @@ bin/x86_64-linux/janas-bench <model.jns>
 
 **with the machine to itself** — close the browser and the editor first. The engine takes the memory that is free when it starts and reads the disk while it answers, so anything else running lands in the numbers: on the development laptop, with 8 GB already taken by other programs, the same model went from 20-25 tokens per second to nearly 18.
 
-Then open a [hardware report](https://github.com/prabanta-dev/janas/issues/new?template=01-hardware-report.yml): the form asks for the report it writes, your distribution and kernel (`uname -a`), your memory (`free -g`), the disk the model sits on, and anything that looked wrong. The README lists which machines are wanted most: CPUs without AVX-VNNI, AMD, discrete GPUs, machines with 16 GB or less, slower disks.
+Then open a [hardware report](https://github.com/prabanta-dev/janas/issues/new?template=01-hardware-report.yml): the form asks for the report it writes, your distribution and kernel (`uname -a`), your memory (`free -g`), the disk the model sits on, and anything that looked wrong. [docs/hardware.md](docs/hardware.md#helping-it-run-on-more-hardware) lists which machines are wanted most: CPUs without AVX-VNNI, AMD, discrete GPUs, machines with 16 GB or less, slower disks.
 
 **A model that will not convert, or converts and then answers nonsense.** Say which file (with its link and its SHA-256) and what `gguf2jns` printed — there is [a form for that](https://github.com/prabanta-dev/janas/issues/new?template=03-a-model-will-not-work.yml) too.
 
