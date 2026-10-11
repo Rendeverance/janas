@@ -80,6 +80,7 @@
     X(vkCmdBindPipeline)                                                       \
     X(vkCmdPushConstants)                                                      \
     X(vkCmdDispatch)                                                           \
+    X(vkCmdDispatchIndirect)                                                   \
     X(vkCmdPipelineBarrier)                                                    \
     X(vkCmdCopyBuffer)                                                         \
     X(vkWaitForFences)                                                         \

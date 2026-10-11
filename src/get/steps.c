@@ -60,14 +60,15 @@ int get_same(const char *file, const char *want)
 }
 
 int get_fetch(const char *repo, const char *path, const char *dir,
-              const char *want)
+              const char *want, int quiet)
 {
     char local[4096], err[512], listed[65], got[65];
     get_local(local, sizeof(local), dir, path);
     uint64_t size = 0;
     if (janas_hf_info(repo, NULL, path, &size, listed, err, sizeof(err)) != 0) {
-        fprintf(stderr, "janas-get: %s\n", err);
-        return -1;
+        if (!quiet)
+            fprintf(stderr, "janas-get: %s\n", err);
+        return -2;
     }
     /* the repository may have been changed since MODELS.md was written:
        then its file is not the one the fingerprints are of */

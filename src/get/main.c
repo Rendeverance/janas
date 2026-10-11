@@ -1,21 +1,24 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
    Copyright (C) 2026 Maurizio Cammalleri */
 /*
- * janas-get - a model ready for Janas in one command: downloaded from
- * Hugging Face, checked, converted, its prediction file made beside it,
- * every file compared with the fingerprints of MODELS.md.
+ * janas-get - a model ready for Janas in one command: its .jns file, and
+ * its prediction file, downloaded already converted from Hugging Face
+ * (prabanta-dev/<model>-JNS), every file compared with the fingerprints
+ * of MODELS.md. With --from-gguf, or where the converted file is not on
+ * Hugging Face, the GGUF the catalog names is downloaded and converted
+ * here instead, to the same fingerprints.
  *
  *   janas-get list
- *   janas-get <model> [--dir DIR] [--keep] [--no-mtp]
- *   janas-get hf:<owner>/<repo>/<file.gguf> [--dir DIR] [--keep]
+ *   janas-get <model> [--dir DIR] [--no-mtp] [--from-gguf [--keep]]
+ *   janas-get hf:<owner>/<repo>/<file.jns|file.gguf> [--dir DIR] [--keep]
  *
  * The models go where janas-chat looks for them (janas_models_dir: the
  * environment's JANAS_MODELS, or ~/.local/share/janas/models), unless
  * --dir says otherwise. A model with a draft in the catalog brings it.
  *
  * A download stopped halfway resumes where it stopped; a file already
- * there is checked, not fetched again. The GGUF goes once converted,
- * unless --keep.
+ * there is checked, not fetched again. A GGUF goes once converted, unless
+ * --keep.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,13 +35,17 @@ static void usage(void)
 {
     fprintf(stderr,
             "usage: janas-get list\n"
-            "       janas-get <model> [--dir DIR] [--keep] [--no-mtp]\n"
-            "       janas-get hf:<owner>/<repo>/<file.gguf> [--dir DIR] "
-            "[--keep]\n"
-            "  --dir DIR   where the models go (default: JANAS_MODELS, or\n"
-            "              ~/.local/share/janas/models)\n"
-            "  --keep      keep the downloaded GGUF once converted\n"
-            "  --no-mtp    without the model's prediction file or draft\n");
+            "       janas-get <model> [--dir DIR] [--no-mtp] [--from-gguf "
+            "[--keep]]\n"
+            "       janas-get hf:<owner>/<repo>/<file.jns|file.gguf> "
+            "[--dir DIR] [--keep]\n"
+            "  --dir DIR    where the models go (default: JANAS_MODELS, or\n"
+            "               ~/.local/share/janas/models)\n"
+            "  --no-mtp     without the model's prediction file or draft\n"
+            "  --from-gguf  download the original GGUF and convert it here\n"
+            "               (by default the file comes converted, from\n"
+            "               Hugging Face's prabanta-dev)\n"
+            "  --keep       keep the downloaded GGUF once converted\n");
 }
 
 static void list(void)
@@ -46,11 +53,13 @@ static void list(void)
     printf("%-22s %8s %7s  %s\n", "model", "download", "memory", "");
     for (int i = 0; i < janas_catalog_n; i++) {
         const struct janas_model_entry *m = &janas_catalog[i];
-        printf("%-22s %6.1f GB %4d GB  %s\n", m->name, m->gguf_gb, m->ram_gb,
-               m->what);
+        printf("%-22s %6.1f GB %4d GB  %s\n", m->name,
+               m->jns_repo ? m->jns_gb : m->gguf_gb, m->ram_gb, m->what);
     }
-    printf("\nFingerprints and licences: MODELS.md. Any other GGUF: "
-           "janas-get hf:<owner>/<repo>/<file.gguf>\n");
+    printf("\nDownloaded converted from Hugging Face (prabanta-dev); "
+           "--from-gguf converts here.\nFingerprints and licences: "
+           "MODELS.md. Any other file: janas-get "
+           "hf:<owner>/<repo>/<file.jns|file.gguf>\n");
 }
 
 static int exists(const char *path)
@@ -83,17 +92,15 @@ static int convert(const char *first, const char *out)
     return get_run("gguf2jns", argv) == 0 ? 0 : -1;
 }
 
-static int from_catalog(const struct janas_model_entry *m, const char *dir,
-                        int keep, int no_mtp)
+/* The catalog's GGUF downloaded and converted here, its prediction file
+   made beside it: the way before the converted files were on Hugging
+   Face, and the one --from-gguf takes */
+static int from_gguf(const struct janas_model_entry *m, const char *dir,
+                     int keep, int no_mtp)
 {
     char out[4096], first[4096], flat[4200];
     snprintf(out, sizeof(out), "%s/%s", dir, m->out);
     get_local(first, sizeof(first), dir, m->parts[0]);
-    if (m->ram_gb &&
-        janas_mem_total() < (uint64_t)m->ram_gb * (1ull << 30) * 85 / 100)
-        printf("note: %s is meant for machines with %d GB of memory or "
-               "more; this one has %.1f GB\n",
-               m->name, m->ram_gb, (double)janas_mem_total() / (1ull << 30));
     int have = exists(out) &&
                get_same(out, m->jns_sha ? m->jns_sha : m->flat_sha) == 1;
     if (have) {
@@ -114,7 +121,7 @@ static int from_catalog(const struct janas_model_entry *m, const char *dir,
         }
         printf("== %s: downloading\n", m->name);
         for (int p = 0; p < JANAS_CATALOG_PARTS && m->parts[p]; p++)
-            if (get_fetch(m->repo, m->parts[p], dir, m->part_sha[p]) != 0)
+            if (get_fetch(m->repo, m->parts[p], dir, m->part_sha[p], 0) != 0)
                 return 1;
         snprintf(flat, sizeof(flat), "%s.flat", out);
         const char *conv = m->jns_sha ? flat : out;
@@ -145,7 +152,7 @@ static int from_catalog(const struct janas_model_entry *m, const char *dir,
         } else if (m->extra == JANAS_EXTRA_GGUF) {
             char src[4096];
             printf("== its assistant\n");
-            if (get_fetch(m->repo, m->extra_src, dir, m->extra_src_sha) != 0)
+            if (get_fetch(m->repo, m->extra_src, dir, m->extra_src_sha, 0) != 0)
                 return 1;
             get_local(src, sizeof(src), dir, m->extra_src);
             if (convert(src, xout) != 0 ||
@@ -166,8 +173,77 @@ static int from_catalog(const struct janas_model_entry *m, const char *dir,
     return 0;
 }
 
-/* hf:<owner>/<repo>/<path>: any GGUF, checked against the SHA-256 Hugging
-   Face lists, converted in one step */
+/* Room for bytes in dir: 0, or -1 having said so. */
+static int room(const struct janas_model_entry *m, const char *dir, double need)
+{
+    struct statvfs vf;
+    if (statvfs(dir, &vf) == 0 &&
+        (double)vf.f_bavail * (double)vf.f_frsize < need) {
+        fprintf(stderr,
+                "janas-get: %s needs about %.0f GB free in %s; there are "
+                "%.0f\n",
+                m->name, need / 1e9, dir,
+                (double)vf.f_bavail * (double)vf.f_frsize / 1e9);
+        return -1;
+    }
+    return 0;
+}
+
+/* A file of the model already here and the one MODELS.md names. */
+static int have(const char *dir, const char *file, const char *sha)
+{
+    char path[4096];
+    snprintf(path, sizeof(path), "%s/%s", dir, file);
+    if (!exists(path) || get_same(path, sha) != 1)
+        return 0;
+    printf("%s: already here, fingerprint checked\n", path);
+    return 1;
+}
+
+/* The model as the catalog lists it: converted, from Hugging Face; where
+   it is not there (nothing downloaded yet), by the GGUF. 0, or 1. */
+static int from_catalog(const struct janas_model_entry *m, const char *dir,
+                        int keep, int no_mtp, int gguf)
+{
+    if (m->ram_gb &&
+        janas_mem_total() < (uint64_t)m->ram_gb * (1ull << 30) * 85 / 100)
+        printf("note: %s is meant for machines with %d GB of memory or "
+               "more; this one has %.1f GB\n",
+               m->name, m->ram_gb, (double)janas_mem_total() / (1ull << 30));
+    if (gguf || !m->jns_repo)
+        return from_gguf(m, dir, keep, no_mtp);
+    const char *sha = m->jns_sha ? m->jns_sha : m->flat_sha;
+    int extra = m->extra != JANAS_EXTRA_NONE && !no_mtp;
+    if (!have(dir, m->out, sha)) {
+        if (room(m, dir, m->jns_gb * 1.05e9) != 0)
+            return 1;
+        printf("== %s: downloading, converted (%s)\n", m->name, m->jns_repo);
+        int r = get_fetch(m->jns_repo, m->out, dir, sha, 1);
+        if (r == -2) {
+            printf("   not on Hugging Face yet (or unreachable): from the "
+                   "GGUF instead\n");
+            return from_gguf(m, dir, keep, no_mtp);
+        }
+        if (r != 0)
+            return 1;
+    }
+    if (extra && !have(dir, m->extra_out, m->extra_sha)) {
+        printf("== its %s\n",
+               m->extra == JANAS_EXTRA_GGUF ? "assistant" : "MTP block");
+        int r = get_fetch(m->jns_repo, m->extra_out, dir, m->extra_sha, 1);
+        if (r == -2) {
+            printf("   not on Hugging Face yet (or unreachable): made "
+                   "here\n");
+            return from_gguf(m, dir, keep, no_mtp);
+        }
+        if (r != 0)
+            return 1;
+    }
+    return 0;
+}
+
+/* hf:<owner>/<repo>/<path>: any .jns, or any GGUF converted in one step,
+   checked against the SHA-256 Hugging Face lists */
 static int from_hf(const char *spec, const char *dir, int keep)
 {
     char repo[512];
@@ -183,6 +259,18 @@ static int from_hf(const char *spec, const char *dir, int keep)
     const char *path = b + 1;
     char local[4096], out[4200];
     get_local(local, sizeof(local), dir, path);
+    size_t pl = strlen(path);
+    if (pl > 4 && strcmp(path + pl - 4, ".jns") == 0) {
+        printf("== %s: downloading (not in the catalog: checked against the "
+               "SHA-256 Hugging Face lists)\n",
+               path);
+        if (get_fetch(repo, path, dir, NULL, 0) != 0)
+            return 1;
+        printf("\nReady: %s (no fingerprint to compare: not in MODELS.md)\n"
+               "Chat with it: janas-chat %s\n",
+               local, local);
+        return 0;
+    }
     snprintf(out, sizeof(out), "%s", local);
     char *dot = strrchr(out, '.');
     if (dot && strcmp(dot, ".gguf") == 0)
@@ -194,7 +282,7 @@ static int from_hf(const char *spec, const char *dir, int keep)
     printf("== %s: downloading (not in the catalog: checked against the "
            "SHA-256 Hugging Face lists)\n",
            path);
-    if (get_fetch(repo, path, dir, NULL) != 0 || convert(local, out) != 0)
+    if (get_fetch(repo, path, dir, NULL, 0) != 0 || convert(local, out) != 0)
         return 1;
     if (!keep)
         remove(local);
@@ -213,7 +301,7 @@ int main(int argc, char **argv)
     }
     static char home_dir[4096];
     const char *dir = NULL;
-    int keep = 0, no_mtp = 0;
+    int keep = 0, no_mtp = 0, gguf = 0;
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--dir") == 0 && i + 1 < argc)
             dir = argv[++i];
@@ -221,6 +309,8 @@ int main(int argc, char **argv)
             keep = 1;
         else if (strcmp(argv[i], "--no-mtp") == 0)
             no_mtp = 1;
+        else if (strcmp(argv[i], "--from-gguf") == 0)
+            gguf = 1;
         else {
             usage();
             return 2;
@@ -253,12 +343,12 @@ int main(int argc, char **argv)
                 argv[1]);
         return 2;
     }
-    int r = from_catalog(m, dir, keep, no_mtp);
+    int r = from_catalog(m, dir, keep, no_mtp, gguf);
     const struct janas_model_entry *d =
         m->draft && !no_mtp ? janas_catalog_find(m->draft) : NULL;
     if (r == 0 && d) {
         printf("== its draft, %s\n", d->name);
-        r = from_catalog(d, dir, keep, 1);
+        r = from_catalog(d, dir, keep, 1, gguf);
     }
     if (r == 0)
         printf("\nReady: %s/%s\nChat with it: janas-chat %s\n", dir, m->out,

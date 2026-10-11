@@ -28,7 +28,7 @@ What every service does the same way:
 
 ## In janas-chat
 
-`janas-chat` starts by itself the services it finds beside it (in the same directory as the program) and runs without asking the calls of the tools that only read. A tool that changes something - `janas-git`'s commit, pull, push, switch - says so (MCP's `readOnlyHint` false), and its call is shown whole and asked of you every time, with `--mcp-auto` too; on a pipe it is not run. Their tools are not written into the system message: it holds a catalog, a line a service, and the model opens a service when a question needs it, getting its instructions and tools then (`--all-tools` writes them all at the start instead). A call shows as a dimmed line. Nothing to configure, nothing to name: ask your question.
+`janas-chat` starts by itself the services it finds in `services/` beside it (the binary package) or beside it (in the same directory as the program, as the build leaves them) and runs without asking the calls of the tools that only read. A tool that changes something - `janas-git`'s commit, pull, push, switch - says so (MCP's `readOnlyHint` false), and its call is shown whole and asked of you every time, with `--mcp-auto` too; on a pipe it is not run. Their tools are not written into the system message: it holds a catalog, a line a service, and the model opens a service when a question needs it, getting its instructions and tools then (`--all-tools` writes them all at the start instead). A call shows as a dimmed line. Nothing to configure, nothing to name: ask your question.
 
 - `/mcp` lists the servers running, the services marked as Janas's.
 - `--no-services` starts none of them; `--no-mcp` no server at all.

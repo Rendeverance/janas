@@ -241,7 +241,7 @@ static void usage(void)
         "usage: janas-chat [model] [options]\n"
         "  model            a .jns file, or a name of the catalog (none: the\n"
         "                   list, to choose one; a model not here yet is\n"
-        "                   downloaded and converted, after asking)\n"
+        "                   downloaded, after asking)\n"
         "  --profile <quality|fast>\n"
         "                   quality (default): answers as the file gives\n"
         "                   them; fast: also what was measured faster on\n"

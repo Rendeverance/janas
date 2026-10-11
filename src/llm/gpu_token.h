@@ -9,6 +9,8 @@
  * For now the dense attention models (qwen3's shape: q and k norms, NeoX
  * RoPE, an eight-bit KV cache, SiLU feed-forward), and qwen3.5's (Gated
  * DeltaNet layers between them, the query with an output gate) for blocks,
+ * both with a mixture of experts too (qwen3moe, qwen35moe: a submission a
+ * layer, the CPU sorting the router's choice in between),
  * on a GPU that shares the host's memory: the weights, the experts' arena and
  * the KV cache are the CPU's own memory, imported, so the CPU's passes (a
  * prompt in blocks) and the GPU's tokens read and write the same cache. The
@@ -39,6 +41,17 @@ struct janas_gpu_tok_layer {
     struct janas_matvec_task ssm_qkv, ssm_z, ssm_out;
     const float *ssm_beta, *ssm_alpha, *conv_w, *dt, *ssm_a, *ssm_norm;
     uint32_t slot;
+    /* a mixture's layer (the model's n_expert > 1): the router (n_expert x
+       dm, f16) and the shared expert's gate (dm floats, or NULL); gate, up
+       and down the experts' types and shapes, with no weights - those come
+       from the model's slots (janas_gpu_tok_model fetch): off, each
+       matrix's bytes into a slot, poff the down matrix's two bare planes'
+       (Q6_K_P: 0, a plane the cache does not hold); sh_gate_w, sh_up, sh_down
+       the shared expert (type 0: none) */
+    const uint16_t *router16;
+    const float *sh_gate;
+    size_t off[3], poff[2];
+    struct janas_matvec_task sh_gate_w, sh_up, sh_down;
 };
 
 struct janas_gpu_tok_model {
@@ -61,6 +74,21 @@ struct janas_gpu_tok_model {
     int vmap_mod;
     uint16_t *ssm_state;
     float *conv_state;
+    /* a mixture (n_expert > 1, 0 for a dense model): k experts a token, of
+       eff rows each; ff above is the shared expert's (eff without one).
+       Its layers run one at a time, the CPU between two of them: the
+       router's choice read, its experts' slots asked of fetch (0, or -1:
+       the block goes to the CPU), the pairs given to routed (or NULL) */
+    uint32_t n_expert, k, eff;
+    int (*fetch)(void *ctx, uint32_t layer, const uint32_t *ids, size_t n,
+                 const uint8_t **slots);
+    void (*routed)(void *ctx, uint32_t layer, uint32_t n, uint32_t k,
+                   const uint32_t *ids);
+    /* reads every expert of the layer that is not in the cache, while the
+       caller goes on (or NULL): a block of many tokens chooses nearly all
+       of them, so none is read for nothing */
+    void (*prefetch)(void *ctx, uint32_t layer);
+    void *ctx;
 };
 
 struct janas_gpu_tok;

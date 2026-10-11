@@ -1,0 +1,26 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+   Copyright (C) 2026 Maurizio Cammalleri */
+#version 450
+// A mixture's activations in the experts' order (gpu_token.c): row g of
+// dst is the quantized vector of token tok[g] of src, nb blocks of 320
+// bytes a vector (the product shaders' layout). A workgroup a row.
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+
+layout(local_size_x = 64) in;
+
+layout(buffer_reference, std430, buffer_reference_align = 16) readonly buffer U4 { uvec4 v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 16) writeonly buffer U4O { uvec4 v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer U1 { uint v[]; };
+
+layout(push_constant) uniform P { uvec2 src, dst, tok; uint nb; } p;
+
+void main()
+{
+    uint g = gl_WorkGroupID.x, words = p.nb * 20u; // 320 bytes = 20 uvec4
+    uint t = U1(p.tok).v[g];
+    U4 S = U4(p.src);
+    U4O D = U4O(p.dst);
+    for (uint i = gl_LocalInvocationID.x; i < words; i += 64u)
+        D.v[g * words + i] = S.v[t * words + i];
+}

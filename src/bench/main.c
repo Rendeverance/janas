@@ -11,6 +11,10 @@
  *                    [--gen <tokens>] [--ctx <tokens>] [--cache <GiB>]
  *                    [--reserve <GiB>]
  *                    [--rounds <n>] (default 3, alternating the order)
+ *                    [--settle <seconds>] (after the warm-up, wait up to
+ *                    that long for the cache's background filling to end:
+ *                    the configurations measured on a warm cache, as a
+ *                    chat runs after its first minutes)
  *
  * The prompt is prose that does not repeat itself (only a prompt longer
  * than the text repeats it, and the report says so). The drafts of the
@@ -179,7 +183,8 @@ int main(int argc, char **argv)
     if (argc < 2 || argv[1][0] == '-') {
         fprintf(stderr, "usage: janas-bench <model.jns> [--mtp <file>] "
                         "[--prompt <tokens>] [--gen <tokens>] [--ctx <tokens>] "
-                        "[--cache <GiB>] [--reserve <GiB>] [--rounds <n>]\n");
+                        "[--cache <GiB>] [--reserve <GiB>] [--rounds <n>] "
+                        "[--settle <seconds>]\n");
         return 2;
     }
     struct janas_llm_params p;
@@ -188,9 +193,10 @@ int main(int argc, char **argv)
     p.n_ctx = 4096;
     uint32_t n_prompt = 256, n_gen = 64;
     int rounds = 3;
-    static const char *const options[] = {"--mtp",    "--prompt", "--gen",
-                                          "--ctx",    "--rounds", "--cache",
-                                          "--reserve"};
+    long long settle = 0;
+    static const char *const options[] = {"--mtp",     "--prompt", "--gen",
+                                          "--ctx",     "--rounds", "--cache",
+                                          "--reserve", "--settle"};
     for (int i = 2; i < argc; i += 2) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         char why[200] = "";
@@ -210,6 +216,8 @@ int main(int argc, char **argv)
                 else
                     rounds = x < 1000 ? (int)x : 1000;
             }
+        } else if (strcmp(a, "--settle") == 0) {
+            janas_word_int(v, 0, 86400, &settle, why, sizeof why);
         } else if (strcmp(a, "--cache") == 0 || strcmp(a, "--reserve") == 0) {
             if (janas_word_real(v, 0, 1 << 20, &r, why, sizeof why) == 0)
                 *(a[2] == 'c' ? &p.cache_bytes : &p.reserve_bytes) =
@@ -309,6 +317,30 @@ int main(int argc, char **argv)
     if (measure(m, prompt, n_prompt, n_gen, NULL, &d) != 0) {
         out("generation failed\n");
         return 1;
+    }
+    if (settle > 0) {
+        /* the filling runs while nobody asks: wait until it has stopped
+           (not filling, and no expert more for 3 s: it may not have
+           resumed yet when first asked) */
+        struct timespec t0, t1, nap = {.tv_sec = 1};
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+        uint64_t last = janas_llm_model_warm_done(m);
+        int still = 0;
+        do {
+            nanosleep(&nap, NULL);
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            uint64_t now_in = janas_llm_model_warm_done(m);
+            still =
+                janas_llm_model_settling(m) || now_in != last ? 0 : still + 1;
+            last = now_in;
+        } while (still < 3 && t1.tv_sec - t0.tv_sec < settle);
+        out("waited %lld s for the cache's filling (%llu experts in)%s\n",
+            (long long)(t1.tv_sec - t0.tv_sec), (unsigned long long)last,
+            still < 3 ? ", not over" : "");
+        if (measure(m, prompt, n_prompt, n_gen, NULL, &d) != 0) {
+            out("generation failed\n");
+            return 1;
+        }
     }
 
     int th[16], gp[16];

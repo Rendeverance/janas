@@ -9,12 +9,12 @@
  * each candidate a few times, keeps the fastest, and now and then tries the
  * others again to follow the machine's state (heat, power source). The
  * number of threads is settled by the first tries, and moves only when
- * other threads win several tries in a row, each a fresh pass against the
- * choice's recent mean: a pass costs more as the context grows, so a
- * candidate's old mean, made at short context, must not decide - which
- * moved chats onto fewer cores than they could use - but a laptop that
- * warms up can turn the first tries' verdict round. The choices are saved
- * per machine and model, so the next start begins from them.
+ * other threads win several tries in a row, or one by half or more, each
+ * a fresh pass against the choice's recent mean: a pass costs more as the
+ * context grows, so a candidate's old mean, made at short context, must not
+ * decide - which moved chats onto fewer cores than they could use - but a
+ * laptop that warms up can turn the first tries' verdict round. The choices are
+ * saved per machine and model, so the next start begins from them.
  */
 #ifndef JANAS_LLM_TUNER_H
 #define JANAS_LLM_TUNER_H
@@ -47,9 +47,10 @@ struct janas_tuner {
         double cost[JANAS_TUNE_MAX_CANDS]; /* seconds per token, averaged */
         uint32_t tried[JANAS_TUNE_MAX_CANDS];
         uint32_t last[JANAS_TUNE_MAX_CANDS]; /* pass of the last try */
-        /* tries in a row each candidate won against the choice (one with
-           other threads takes the threads over at RESETTLE_WINS) */
-        uint8_t wins[JANAS_TUNE_MAX_CANDS];
+        /* tries in a row won against the choice by each candidate, and by
+           any with other threads (their threads taken over when either
+           reaches RESETTLE_WINS, or at once by a try twice as fast) */
+        uint8_t wins[JANAS_TUNE_MAX_CANDS], other_wins;
         uint32_t passes;
         int def; /* the default candidate */
         /* the next try of an alternative, the passes until the one after,

@@ -2,6 +2,21 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-11] - Models downloaded already converted
+
+- **`janas-get` downloads the `.jns` files themselves**, from the project's repositories on Hugging Face (`prabanta-dev/<model>-JNS`): no conversion on your machine, half the room on disk, every file checked against the same fingerprints of MODELS.md. `--from-gguf` keeps the old way (the original GGUF, converted here), and `janas-get` takes it by itself where a converted file is not on Hugging Face; `janas-get hf:<owner>/<repo>/<file.jns>` takes any `.jns`. `janas-get list` shows the size of the converted files.
+
+## [2026-10-10] - The tuner leaves cores another program has taken
+
+- **The threads move as soon as they turn slow.** With another program busy on the efficiency cores, Qwen3.5-2B's tokens on 20 threads took 680-850 ms each against 22 on 6 or 12, and the tuner moved them only after 645 tokens: the 6 and 12 took the tries in turn and each counted only its own wins, and the first try came 128 passes in. Now a pass of the choice twice as slow as its mean brings a try at once, a try twice as fast moves the threads, wins by any other threads count together, and the next try comes 16 passes after one that won. A reply of 3,000 tokens under that load: 584 s before, 57 s now; without it, nothing moves (38 s, the same threads). `JANAS_TUNE_TRACE=1` prints the tuner's tries and moves.
+
+## [2026-10-10] - A mixture's prompt layer by layer on the GPU
+
+- **A mixture's prompt blocks read on the GPU alone, a layer a submission** (qwen3moe, qwen35moe, integrated GPUs). Each layer is one submission - attention or Gated DeltaNet, norms, shared expert, router and its choice of experts - and between two of them the CPU only sorts the router's choice by expert, asks the expert cache for their slots and has the next layer's experts read ahead while the GPU computes; the experts' products, their activation and each token's weighted sum stay on the GPU. Reading 1,024 tokens on the development laptop: Qwen3.6-35B-A3B at four bits, 59% of its experts in the cache, 85.6 -> 101.9 tok/s, the cache finding 96% of the experts it is asked for instead of 87%. Against Qwen's Q8_0 the most likely token agrees as often (250 against 249 of 256 on code, 234 against 238 and 234 against 234 on Italian), the mean difference equal or smaller. Qwen3-30B-A3B, its experts all in memory, comes out even (130.6 against 130.0 over three runs each), with the CPU free during the prompt.
+- **On by itself where the memory allows it**: where the expert cache holds half a model's experts or more - the 30B and the 35B on a 32 GB machine, larger models on larger ones. A smaller cache keeps the way the experts were shared between CPU and GPU, not measured below that yet; so do experts whose down matrices are plain Q6_K (Qwen3-Coder-30B-A3B read 116.9 tok/s that way instead of 131.5). bartowski's Qwen3-30B-A3B came out even (127.0 against 128.4). `JANAS_GPU_MOE=1` takes any mixture, `0` none. The CPU-only engine is unchanged.
+- **The experts' shader on the GPU reads Q6_K in planes at four and two bits too**, not only at six: a model whose experts are read at fewer bits (`--bits 4`, Qwen3.6-35B-A3B on a 32 GB machine) gets its experts' down products on the GPU.
+- **`janas-bench --settle <seconds>`** waits after the warm-up for the expert cache's background filling to end before measuring.
+
 ## [2026-10-10] - Prompts read on the GPU, faster than llama.cpp on the same GPU
 
 - **The fast prompt, on by default.** A prompt's blocks go to the GPU's tiled products - Q4_K, Q5_K, Q6_K (plain and in planes), Q8_0, f32 and bf16 weights, a mixture's experts in one launch per layer, the GPU taking 60% of their tokens while the CPU computes the rest - and on the dense Qwen3 and Qwen3.5 models the whole block, every layer, goes to the GPU in one submission while the CPU rests. They round the sums group by group, so a prompt is no longer read to the bit as the CPU reads it; against the references the most likely token agrees as often as the exact way (within 2-3 of 256 on every model measured). A reply's tokens are as before. `JANAS_GPU_FAST_PROMPT=0` reads prompts the exact way.

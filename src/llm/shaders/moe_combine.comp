@@ -1,0 +1,34 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+   Copyright (C) 2026 Maurizio Cammalleri */
+#version 450
+// A mixture's output for each token (gpu_token.c): the weighted sum of its
+// k experts' outputs - pair j k + i weight pw, its row inv in dout, dm
+// floats a row - plus, with a shared expert, its output sh times its
+// weight shw. Into y, dm floats a token, which the next norm adds to the
+// residual. A workgroup a block of 256 values of a token. NOT bit for bit
+// with the CPU: the residual added once, after the sum.
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+
+layout(local_size_x = 256) in;
+
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer F { float v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer U1 { uint v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) writeonly buffer FO { float v[]; };
+
+layout(push_constant) uniform P { uvec2 dout, pw, inv, sh, shw, y; uint dm, k, has_sh; } p;
+
+void main()
+{
+    uint j = gl_WorkGroupID.y, d = gl_WorkGroupID.x * 256u + gl_LocalInvocationID.x;
+    F DO = F(p.dout), PW = F(p.pw);
+    U1 INV = U1(p.inv);
+    float s = 0.0;
+    for (uint i = 0u; i < p.k; i++) {
+        uint q = j * p.k + i;
+        s += PW.v[q] * DO.v[INV.v[q] * p.dm + d];
+    }
+    if (p.has_sh != 0u)
+        s += F(p.shw).v[j] * F(p.sh).v[j * p.dm + d];
+    FO(p.y).v[j * p.dm + d] = s;
+}

@@ -195,6 +195,37 @@ int main(void)
     run(&t, (const double[]){1.0, 0.6, 0.9, 0.9}, 5000);
     CHECK(janas_tuner_best(&t, 2) == 1, "warmed up: best %d, want 1",
           janas_tuner_best(&t, 2));
+
+    /* another program takes the efficiency cores: 20 threads 30 times
+       slower, 6 and 12 alike - the first try moves the threads (it took
+       645 passes, the 6 and 12 taking the tries in turn, 10 Oct 2026) */
+    janas_tuner_init(&t, cand, 4, def, 0);
+    janas_tuner_allow_gpu(&t, 0);
+    run(&t, (const double[]){1.0, 1.2, 0.8, 0.9}, 40);
+    int slow = 0, i30;
+    for (i30 = 0; i30 < 2000 && janas_tuner_best(&t, 2) == 2; i30++) {
+        int c = janas_tuner_pick(&t, 2);
+        slow += c == 2;
+        janas_tuner_record(&t, 2, c, (const double[]){0.9, 0.9, 27, 0.9}[c]);
+    }
+    CHECK(janas_tuner_best(&t, 2) != 2 && slow < 5,
+          "20 threads 30 times slower: best %d after %d passes, %d slow",
+          janas_tuner_best(&t, 2), i30, slow);
+
+    /* ... 6 and 12 both a third faster, not twice: their wins count
+       together, the next try soon after one won */
+    janas_tuner_init(&t, cand, 4, def, 0);
+    janas_tuner_allow_gpu(&t, 0);
+    run(&t, (const double[]){1.0, 1.2, 0.8, 0.9}, 40);
+    slow = 0;
+    for (i30 = 0; i30 < 2000 && janas_tuner_best(&t, 2) == 2; i30++) {
+        int c = janas_tuner_pick(&t, 2);
+        slow += c == 2;
+        janas_tuner_record(&t, 2, c, (const double[]){0.6, 0.6, 0.8, 0.9}[c]);
+    }
+    CHECK(janas_tuner_best(&t, 2) != 2 && i30 < 400,
+          "6 and 12 a third faster: best %d after %d passes",
+          janas_tuner_best(&t, 2), i30);
     /* forced: always that candidate */
     janas_tuner_force(&v, 1);
     for (int i = 0; i < 10; i++)

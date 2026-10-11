@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Maurizio Cammalleri
+#
+# The binary package of Janas for Linux x86-64: built on Ubuntu 22.04, so
+# that it runs with the C library of Ubuntu 22.04, Debian 12 and later;
+# tested; packed as janas-linux-x86_64.tar.gz with the SHA-256 of every
+# file. A tag v* publishes it as that tag's release (the name never
+# changes, so releases/latest/download/janas-linux-x86_64.tar.gz is always
+# the newest); run by hand, it only builds the package and keeps it as an
+# artifact of the run. The shaders' compiler and the Vulkan headers are
+# Khronos's own, at fixed versions: Ubuntu 22.04's are from 2022.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GLSLANG_VERSION: 16.6.0
+  GLSLANG_SHA256: 2c34071f56ecf39d16233294d3739cf43f981fd39080f2fd9dccb782101191ce
+  VULKAN_HEADERS_TAG: vulkan-sdk-1.4.363.0
+  VULKAN_HEADERS_COMMIT: 6802bb4733b63ed5efd3adb308a6c885ef180ea1
+  PACKAGE: janas-linux-x86_64
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The shaders' compiler and the Vulkan headers
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/khronos"
+          cd "$RUNNER_TEMP/khronos"
+          curl -fsSL -o glslang.tar.gz \
+            "https://github.com/KhronosGroup/glslang/releases/download/$GLSLANG_VERSION/glslang-$GLSLANG_VERSION-linux-x86_64-release.tar.gz"
+          echo "$GLSLANG_SHA256  glslang.tar.gz" | sha256sum -c -
+          mkdir glslang && tar xzf glslang.tar.gz -C glslang
+          echo "$RUNNER_TEMP/khronos/glslang/bin" >> "$GITHUB_PATH"
+          git clone -q --depth 1 --branch "$VULKAN_HEADERS_TAG" \
+            https://github.com/KhronosGroup/Vulkan-Headers.git
+          test "$(git -C Vulkan-Headers rev-parse HEAD)" = "$VULKAN_HEADERS_COMMIT"
+          echo "CPATH=$RUNNER_TEMP/khronos/Vulkan-Headers/include" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          glslangValidator --version | head -1
+          ./build.sh release build 2>&1 | tee build.log
+          # the GPU's support must be in: without it the package would
+          # run on the CPU alone without a word
+          if grep -q "building without GPU support" build.log; then
+            echo "the build left the GPU out"; exit 1
+          fi
+
+      - name: Test
+        run: ./build.sh release test
+
+      - name: Pack
+        run: |
+          set -euo pipefail
+          B=bin/x86_64-linux
+          P="$PACKAGE/janas"
+          mkdir -p "$P/services" "$P/lib" "$P/include/janas" "$P/docs"
+          for f in janas-chat janas-server janas-get janas-bench janas-mcp \
+                   gguf2jns jns_planes hf2jns_mtp jns_check; do
+            install -m 755 "$B/$f" "$P/"
+          done
+          for s in src/services/*/; do
+            s=$(basename "$s")
+            [ "$s" = common ] && continue
+            install -m 755 "$B/janas-$s" "$P/services/"
+            # each service's page, its links made to point beside it
+            install -m 644 "src/services/$s/README.md" "$P/services/janas-$s.md"
+          done
+          sed -E 's#\(([a-z]+)/README\.md\)#(janas-\1.md)#g' \
+            src/services/README.md > "$P/services/README.md"
+          install -m 755 "$B/libjanas_llm.so" "$B/libjanas_mcp.so" "$P/lib/"
+          install -m 644 include/janas/* "$P/include/janas/"
+          install -m 644 docs/*.md "$P/docs/"
+          install -m 644 dist/README.md "$P/README.md"
+          install -m 644 LICENSE ChangeLog.md MODELS.md "$P/"
+          # nothing but programs, libraries and text: no script of any kind
+          if find "$P" -type f \( -name '*.sh' -o -name '*.py' \) | grep -q .; then
+            echo "a script in the package"; exit 1
+          fi
+          # the newest C library the programs ask for
+          find "$P" -type f -perm -u+x ! -name '*.so' -print0 |
+            xargs -0 -n 1 objdump -T | grep -o 'GLIBC_[0-9.]*' |
+            sort -V | uniq | tail -1
+          (cd "$P" && find . -type f ! -name SHA256SUMS -print0 | sort -z |
+            xargs -0 sha256sum > SHA256SUMS)
+          tar -C "$PACKAGE" -czf "$PACKAGE.tar.gz" janas
+          sha256sum "$PACKAGE.tar.gz" > "$PACKAGE.tar.gz.sha256"
+          cat "$PACKAGE.tar.gz.sha256"
+
+      - name: Keep the package (run by hand)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE }}
+          path: |
+            ${{ env.PACKAGE }}.tar.gz
+            ${{ env.PACKAGE }}.tar.gz.sha256
+
+      - name: Publish the release (a tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "$PACKAGE.tar.gz" "$PACKAGE.tar.gz.sha256" \
+            --title "Janas $GITHUB_REF_NAME" \
+            --notes "Janas for Linux x86-64 (Ubuntu 22.04, Debian 12 and later). Unpack it and start: ./janas-get list, then ./janas-chat <model>. What changed: ChangeLog.md. The SHA-256 of every file: SHA256SUMS in the package."

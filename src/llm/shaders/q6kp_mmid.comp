@@ -2,9 +2,11 @@
    Copyright (C) 2026 Maurizio Cammalleri */
 #version 450
 // The fast prompt for a mixture's experts whose down matrices are Q6_K in
-// planes at level 3: as q4k_mmid.comp, the weights staged as q6kp_mmq.comp
-// does (the table's third uvec4 the two bare planes). NOT bit for bit with
-// the CPU.
+// planes: as q4k_mmid.comp, the weights staged as q6kp_mmq.comp does (the
+// table's third uvec4 the two bare planes). At level 3 both planes; at 2
+// (p0 0) and 1 (p1 0 too) the missing bits zero and the centre of the
+// values they stand for in place of 32 (q6kp_matvec.comp's c / 2: 30.5,
+// 24.5). NOT bit for bit with the CPU.
 #extension GL_EXT_control_flow_attributes : require
 #extension GL_EXT_integer_dot_product : require
 #extension GL_EXT_buffer_reference : require
@@ -47,6 +49,8 @@ void main()
     uvec4 t2 = T.v[3u * e + 2u];
     U4 X = U4(t0.zw);
     U1 W = U1(t0.xy), P1 = U1(t2.xy), P0 = U1(t2.zw);
+    bool h1 = t2.x != 0u || t2.y != 0u, h0 = t2.z != 0u || t2.w != 0u;
+    float cen = h0 ? 32.0 : h1 ? 30.5 : 24.5;
     F Y = F(t1.xy);
     uint id = gl_LocalInvocationID.x;
     uint rq = (id % 32u) * 2u, vq = (id / 32u) * 4u;
@@ -66,7 +70,8 @@ void main()
                 uint pw = (r * p.nb + b) * 16u;
                 [[unroll]] for (uint u = 0; u < 2u; u++) {
                     uint i = 8u * n + 2u * iqs + u;
-                    uint h = hword(W, off, i), a1 = P1.v[pw + i], a0 = P0.v[pw + i];
+                    uint h = hword(W, off, i), a1 = h1 ? P1.v[pw + i] : 0u,
+                         a0 = h0 ? P0.v[pw + i] : 0u;
                     [[unroll]] for (uint k = 0; k < KS; k++) {
                         uint hsh = 2u * k;
                         sa[k * BM + rl + l].qs[2u * iqs + u] =
@@ -99,8 +104,8 @@ void main()
             if (iqs == 0u) {
                 uvec4 bs = X.v[xo + 16u + j / 4u];
                 uint bw = j % 4u == 0u ? bs.x : j % 4u == 1u ? bs.y : j % 4u == 2u ? bs.z : bs.w;
-                sb[k * BN + c].d8s = vec2(32.0 * float(bitfieldExtract(int(bw), 0, 16)),
-                                          32.0 * float(bitfieldExtract(int(bw), 16, 16)));
+                sb[k * BN + c].d8s = vec2(cen * float(bitfieldExtract(int(bw), 0, 16)),
+                                          cen * float(bitfieldExtract(int(bw), 16, 16)));
                 sb[k * BN + c].d8 = uintBitsToFloat(X.v[xo + 18u].x);
             }
         }

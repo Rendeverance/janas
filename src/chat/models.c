@@ -73,8 +73,8 @@ static void list(const char *dir)
         fprintf(stderr,
                 "%2d. %s%s\n    %s; %.1f GB to download, %d GB of "
                 "memory or more\n",
-                ++k, m->name, is_file(p) ? "  (here)" : "", m->what, m->gguf_gb,
-                m->ram_gb);
+                ++k, m->name, is_file(p) ? "  (here)" : "", m->what,
+                m->jns_repo ? m->jns_gb : m->gguf_gb, m->ram_gb);
     }
     fputc('\n', stderr);
 }
@@ -218,10 +218,18 @@ int chat_model_resolve(const char *arg, struct chat_model *cm)
     if (is_file(cm->path))
         return 0;
     char q[512];
-    snprintf(q, sizeof(q),
-             "%s is not here: download it (%.1f GB, and about %.0f GB free "
-             "while it is converted) with its prediction file?",
-             m->name, m->gguf_gb, m->gguf_gb * 2.0 + 0.5);
+    /* converted already, from Hugging Face (janas-get); the catalog's
+       GGUF converted here only where that file is missing there */
+    if (m->jns_repo)
+        snprintf(q, sizeof(q),
+                 "%s is not here: download it (%.1f GB) with its prediction "
+                 "file?",
+                 m->name, m->jns_gb);
+    else
+        snprintf(q, sizeof(q),
+                 "%s is not here: download it (%.1f GB, and about %.0f GB "
+                 "free while it is converted) with its prediction file?",
+                 m->name, m->gguf_gb, m->gguf_gb * 2.0 + 0.5);
     if (!chat_ask_yes(q))
         return -1;
     if (fetch(m, cm->dir) != 0 || !is_file(cm->path)) {

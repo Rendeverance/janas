@@ -381,8 +381,8 @@ int mcpc_start(const char *path)
 
 int mcpc_start_services(void)
 {
-    /* beside the program: bin/x86_64-linux/janas-chat-asan has
-       janas-flights-asan beside it */
+    /* in services/ beside the program (the binary package), else beside
+       it: bin/x86_64-linux/janas-chat-asan has janas-flights-asan there */
     char self[4096];
     ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
     if (n <= 0)
@@ -399,9 +399,12 @@ int mcpc_start_services(void)
         for (size_t k = 0; k < n_servers; k++)
             taken |= strcmp(servers[k].name, SERVICES[i].name) == 0;
         char path[4200];
-        snprintf(path, sizeof path, "%s/janas-%s%s", self, SERVICES[i].name,
-                 suffix);
         struct stat st;
+        snprintf(path, sizeof path, "%s/services/janas-%s%s", self,
+                 SERVICES[i].name, suffix);
+        if (stat(path, &st) != 0 || !(st.st_mode & S_IXUSR))
+            snprintf(path, sizeof path, "%s/janas-%s%s", self, SERVICES[i].name,
+                     suffix);
         if (taken || stat(path, &st) != 0 || !(st.st_mode & S_IXUSR))
             continue;
         const char *argv[] = {path};

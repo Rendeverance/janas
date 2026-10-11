@@ -66,6 +66,17 @@ int main(void)
         digest(models, m->name, m->jns_sha);
         digest(models, m->name, m->extra_src_sha);
         digest(models, m->name, m->extra_sha);
+        /* the converted file on Hugging Face: the project's own
+           organization, a repository of the model's name, its size */
+        if (m->jns_repo &&
+            (strncmp(m->jns_repo, "prabanta-dev/", 13) != 0 ||
+             strlen(m->jns_repo) < 18 ||
+             strcmp(m->jns_repo + strlen(m->jns_repo) - 4, "-JNS") != 0 ||
+             m->jns_gb <= 0)) {
+            printf("FAIL %s: converted file at %s, %.2f GB\n", m->name,
+                   m->jns_repo, m->jns_gb);
+            failures++;
+        }
         if (!m->flat_sha || (m->extra != JANAS_EXTRA_NONE && !m->extra_sha)) {
             printf("FAIL %s: a fingerprint missing\n", m->name);
             failures++;

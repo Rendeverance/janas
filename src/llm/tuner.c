@@ -18,6 +18,19 @@
 #define RETRY_EVERY 128 /* passes between tries of an alternative, at first */
 #define RETRY_MAX 1024  /* at most, after tries that changed nothing */
 #define RESETTLE_WINS 3 /* tries in a row won by other threads: theirs */
+#define DECISIVE 0.5    /* ... or one try this much faster than the choice */
+#define RETRY_WON 16    /* passes to the next try after one that won */
+
+/* JANAS_TUNE_TRACE=1: the threads settled, every try of an alternative
+   after that (against the choice's mean) and the threads moved, on
+   stderr: what a long chat does, which the tests only simulate */
+static int tracing(void)
+{
+    static int on = -1;
+    if (on < 0)
+        on = getenv("JANAS_TUNE_TRACE") && atoi(getenv("JANAS_TUNE_TRACE")) > 0;
+    return on;
+}
 
 int janas_tune_class(uint32_t n_tokens)
 {
@@ -84,6 +97,9 @@ static void settle_threads(struct janas_tuner *t, int cls)
         if (usable(t, cls, i) && t->cls[cls].tried[i] < TRIES)
             return;
     t->cls[cls].threads = t->cand[janas_tuner_best(t, cls)].threads;
+    if (tracing())
+        fprintf(stderr, "tune class %d pass %u: threads settled on %d\n", cls,
+                t->cls[cls].passes, t->cls[cls].threads);
 }
 
 void janas_tuner_force(struct janas_tuner *t, int cand)
@@ -178,31 +194,53 @@ void janas_tuner_record(struct janas_tuner *t, int cls, int cand,
 {
     if ((t->fixed && t->forced < 0) || t->cls[cls].passes <= WARM_PASSES)
         return;
-    /* a try that beats the choice clearly: tries often again, until the
-       averages settle which is better (one pass alone may be luck) */
     int rb = t->cls[cls].retry_best;
     if (rb >= 0 && cand == t->cls[cls].retry_cand) {
-        if (sec_per_token < t->cls[cls].cost[rb] * MARGIN) {
-            t->cls[cls].retry_gap = RETRY_EVERY;
-            t->cls[cls].retry_at = t->cls[cls].passes + RETRY_EVERY;
-            t->cls[cls].retry_best = -1;
-            t->cls[cls].wins[cand]++;
-        } else {
-            t->cls[cls].wins[cand] = 0;
-        }
+        int th = t->cls[cls].threads, other = th && t->cand[cand].threads != th,
+            won = sec_per_token < t->cls[cls].cost[rb] * MARGIN;
         /*
-         * Other threads, faster in try after try: theirs from now on. The
-         * threads are settled by the first tries, and a laptop that warms
-         * up turns the comparison round - Qwen3.5-2B settled on 20 threads
-         * for its tokens, which then took 28.1 ms against 18.9 on 12 (10
-         * Oct 2026). Their mean starts again from this pass: the old one
-         * was made at another time.
+         * A try that beats the choice clearly: the next one soon, until the
+         * averages settle which is better (one pass alone may be luck).
+         * Other threads, faster in try after try - whichever of them, as
+         * the tries take the candidates in turn - or one twice as fast:
+         * theirs from now on. The threads are settled by the first tries,
+         * and the machine can turn their verdict round: a laptop that
+         * warms up (Qwen3.5-2B settled on 20 threads for its tokens, which
+         * then took 28.1 ms against 18.9 on 12), or another program on the
+         * efficiency cores - 20 threads took 680-850 ms a token against 22
+         * on 6 or 12, and counted per candidate, the 6 and 12 taking the
+         * tries in turn, the wins moved the threads only after 645 tokens,
+         * some 450 s (10 Oct 2026). Their mean starts again from this
+         * pass: the old one was made at another time.
          */
-        int th = t->cls[cls].threads;
-        if (th && t->cand[cand].threads != th &&
-            t->cls[cls].wins[cand] >= RESETTLE_WINS) {
+        if (won) {
+            t->cls[cls].retry_gap = RETRY_EVERY;
+            t->cls[cls].retry_at = t->cls[cls].passes + RETRY_WON;
+            t->cls[cls].retry_best = -1;
+        }
+        t->cls[cls].wins[cand] = won ? t->cls[cls].wins[cand] + 1 : 0;
+        if (other)
+            t->cls[cls].other_wins = won ? t->cls[cls].other_wins + 1 : 0;
+        if (tracing())
+            fprintf(stderr,
+                    "tune class %d pass %u: try %d threads%s %.2f ms against "
+                    "%d threads%s %.2f ms: %s (%u in a row by other "
+                    "threads)\n",
+                    cls, t->cls[cls].passes, t->cand[cand].threads,
+                    t->cand[cand].gpu ? " + GPU" : "", 1e3 * sec_per_token,
+                    t->cand[rb].threads, t->cand[rb].gpu ? " + GPU" : "",
+                    1e3 * t->cls[cls].cost[rb], won ? "won" : "lost",
+                    (unsigned)t->cls[cls].other_wins);
+        if (other && won &&
+            (t->cls[cls].wins[cand] >= RESETTLE_WINS ||
+             t->cls[cls].other_wins >= RESETTLE_WINS ||
+             sec_per_token < t->cls[cls].cost[rb] * DECISIVE)) {
+            if (tracing())
+                fprintf(stderr, "tune class %d pass %u: threads %d -> %d\n",
+                        cls, t->cls[cls].passes, th, t->cand[cand].threads);
             t->cls[cls].threads = t->cand[cand].threads;
-            t->cls[cls].wins[cand] = 0;
+            memset(t->cls[cls].wins, 0, sizeof(t->cls[cls].wins));
+            t->cls[cls].other_wins = 0;
             t->cls[cls].cost[cand] = sec_per_token;
             t->cls[cls].tried[cand] = TRIES;
             t->cls[cls].last[cand] = t->cls[cls].passes;
@@ -211,6 +249,21 @@ void janas_tuner_record(struct janas_tuner *t, int cls, int cand,
     }
     double *c = &t->cls[cls].cost[cand];
     uint32_t n = t->cls[cls].tried[cand];
+    /* the choice suddenly twice as slow as its mean (another program took
+       its cores): the next try at once, not at its turn - the 128 passes
+       before the first one cost some 140 s of a 3,000-token chat at 760
+       ms a token, against 22 on 6 threads (10 Oct 2026) */
+    if (rb < 0 && n >= TRIES && sec_per_token > 2 * *c &&
+        t->cls[cls].retry_at > t->cls[cls].passes) {
+        t->cls[cls].retry_at = t->cls[cls].passes;
+        if (tracing())
+            fprintf(stderr,
+                    "tune class %d pass %u: %d threads%s %.2f ms against a "
+                    "mean of %.2f: a try now\n",
+                    cls, t->cls[cls].passes, t->cand[cand].threads,
+                    t->cand[cand].gpu ? " + GPU" : "", 1e3 * sec_per_token,
+                    1e3 * *c);
+    }
     /* a plain mean over the first tries, then a moving average */
     *c = n == 0      ? sec_per_token
          : n < TRIES ? (*c * n + sec_per_token) / (n + 1)

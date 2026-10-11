@@ -28,8 +28,13 @@ struct janas_model_entry {
     const char *parts[JANAS_CATALOG_PARTS]; /* its file(s), the first given to
                                          gguf2jns */
     const char *part_sha[JANAS_CATALOG_PARTS];
-    double gguf_gb;       /* download */
-    const char *out;      /* the .jns, beside the downloads */
+    double gguf_gb;  /* download */
+    const char *out; /* the .jns, beside the downloads */
+    /* the same .jns (and the extra file), converted and checked, on
+       Hugging Face: what janas-get downloads unless --from-gguf; its
+       size with the extra file */
+    const char *jns_repo;
+    double jns_gb;
     const char *flat_sha; /* what gguf2jns writes (the .jns itself when
                              there are no planes) */
     const char *jns_sha;  /* what jns_planes writes, NULL: one step */

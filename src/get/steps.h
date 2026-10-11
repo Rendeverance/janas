@@ -14,9 +14,11 @@ void get_local(char *out, size_t len, const char *dir, const char *path);
 
 /* File path of repo downloaded into dir (resumed if part of it is there),
    its SHA-256 checked against want (NULL: the one Hugging Face lists). 0,
-   or -1 having said why. */
+   -1 having said why, or -2 when Hugging Face does not list the file
+   (nothing written: the caller may take another way, quiet says nothing
+   then). */
 int get_fetch(const char *repo, const char *path, const char *dir,
-              const char *want);
+              const char *want, int quiet);
 
 /* 1 when file's SHA-256 is want; 0 when it is another, -1 unreadable. */
 int get_same(const char *file, const char *want);

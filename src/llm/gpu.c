@@ -87,9 +87,12 @@ int janas_g_make_stage(struct janas_gpu *g, struct stage *s, size_t bytes,
 {
     VkBufferCreateInfo bi = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                              .size = bytes,
+                             /* indirect: a mixture's dispatches whose
+                                size the CPU writes (gpu_token.c) */
                              .usage =
                                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT};
+                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+                                 VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT};
     if (g->vkCreateBuffer(g->dev, &bi, NULL, &s->buf) != VK_SUCCESS)
         return -1;
     VkMemoryRequirements req;

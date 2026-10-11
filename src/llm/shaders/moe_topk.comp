@@ -1,0 +1,70 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+   Copyright (C) 2026 Maurizio Cammalleri */
+#version 450
+// A mixture's routing on the GPU for a prompt's block (gpu_token.c), as
+// model_ffn.c route_tok: per token, the softmax of its ne router logits,
+// the k largest (the first of equals), each weight divided by the sum of
+// the k; logit ne, the shared expert's gate (if sh), through a sigmoid, 1
+// without one. One invocation a token. NOT bit for bit with the CPU: the
+// GPU's exp, the router's sums in another order.
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+
+layout(local_size_x = 64) in;
+
+layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer F { float v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) writeonly buffer FO { float v[]; };
+layout(buffer_reference, std430, buffer_reference_align = 4) writeonly buffer UO { uint v[]; };
+
+// r: the logits, rs floats a token; pe, pw: expert and weight of pair
+// j k + i; shw: the shared expert's weight of each token
+layout(push_constant) uniform P { uvec2 r, pe, pw, shw; uint ne, rs, k, n, sh; } p;
+
+const uint MAXK = 16u, MAXW = 16u; // k <= 16, ne <= 512
+
+void main()
+{
+    uint j = gl_GlobalInvocationID.x;
+    if (j >= p.n)
+        return;
+    F R = F(p.r);
+    uint base = j * p.rs;
+    float mx = R.v[base];
+    for (uint e = 1u; e < p.ne; e++)
+        mx = max(mx, R.v[base + e]);
+    float sum = 0.0;
+    for (uint e = 0u; e < p.ne; e++)
+        sum += exp(R.v[base + e] - mx);
+    uint taken[MAXW];
+    for (uint i = 0u; i < MAXW; i++)
+        taken[i] = 0u;
+    uint ids[MAXK];
+    float w[MAXK], wsum = 0.0;
+    for (uint i = 0u; i < p.k; i++) {
+        uint best = 0u;
+        float bv = 0.0;
+        bool any = false;
+        for (uint e = 0u; e < p.ne; e++) {
+            if ((taken[e / 32u] & (1u << (e % 32u))) != 0u)
+                continue;
+            float v = R.v[base + e];
+            if (!any || v > bv) {
+                bv = v;
+                best = e;
+                any = true;
+            }
+        }
+        taken[best / 32u] |= 1u << (best % 32u);
+        ids[i] = best;
+        w[i] = exp(bv - mx) / sum;
+        wsum += w[i];
+    }
+    UO PE = UO(p.pe);
+    FO PW = FO(p.pw);
+    for (uint i = 0u; i < p.k; i++) {
+        PE.v[j * p.k + i] = ids[i];
+        PW.v[j * p.k + i] = w[i] / wsum;
+    }
+    FO SHW = FO(p.shw);
+    SHW.v[j] = p.sh != 0u ? 1.0 / (1.0 + exp(-R.v[base + p.ne])) : 1.0;
+}

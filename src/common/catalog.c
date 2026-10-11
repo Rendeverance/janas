@@ -32,6 +32,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a"},
      .gguf_gb = 0.40,
      .out = "qwen3-0.6b-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3-0.6B-JNS",
+     .jns_gb = 0.40,
      .flat_sha =
          "9174da760919b16b9f3a4ae8738c2d53605412f40bb2c0fe68d60174bf8a4fb5",
      .ram_gb = 2,
@@ -44,6 +46,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"},
      .gguf_gb = 2.5,
      .out = "qwen3-4b-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3-4B-JNS",
+     .jns_gb = 2.50,
      .flat_sha =
          "e8ed44bdd3c612ce3ec1204a4b9db671115efab4a2ada384c70cf6492d430291",
      .jns_sha =
@@ -63,6 +67,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"fbe1d5edd4ce802ae3ae7c7e4ab7d09789d697fdac1fc7929f8df4ca3c41bae3"},
      .gguf_gb = 2.5,
      .out = "qwen3-4b-bq4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3-4B-JNS",
+     .jns_gb = 2.50,
      .flat_sha =
          "aa4f0bc6033a206ba5ac51dcdd799299d369019d5614dc08a6baa0bda6123098",
      .jns_sha =
@@ -79,6 +85,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517"},
      .gguf_gb = 0.53,
      .out = "qwen3.5-0.8b-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3.5-0.8B-JNS",
+     .jns_gb = 0.53,
      .flat_sha =
          "75a3b62c4a10cad87a7ce64bf89485cfcc564fa949f2c5af8c7051615dc26124",
      .ram_gb = 2,
@@ -93,6 +101,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223"},
      .gguf_gb = 1.28,
      .out = "qwen3.5-2b-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3.5-2B-JNS",
+     .jns_gb = 1.33,
      .flat_sha =
          "286118ea3ad1903890a593582e22bed82859bf7c38b0ff9ed043050e5bd572a6",
      .extra = JANAS_EXTRA_HF2JNS,
@@ -110,6 +120,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8"},
      .gguf_gb = 5.68,
      .out = "qwen3.5-9b-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3.5-9B-JNS",
+     .jns_gb = 5.83,
      .flat_sha =
          "e40ec6c58ef2390c7a4ce8c9b7b6b384ed4e55c9980f646d1c98e83e2c018115",
      .extra = JANAS_EXTRA_HF2JNS,
@@ -127,6 +139,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"0d003f6662faee786ed5da3e31b29c978de5ae5d275c8794c606a7f3c01aa8f5"},
      .gguf_gb = 18.6,
      .out = "qwen3-30b-a3b-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3-30B-A3B-JNS",
+     .jns_gb = 18.56,
      .flat_sha =
          "6906de51f2923b3be3a83eb040eaaeb090cba3389e9217648abe08bd678376e9",
      .jns_sha =
@@ -148,6 +162,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"f1b8111d3e49a0238fcaa77ec9ee24eb9805266b5e85bf8e54c12dedb02cf4ff"},
      .gguf_gb = 13.8,
      .out = "qwen3-30b-a3b-udq3kxl.jns",
+     .jns_repo = "prabanta-dev/Qwen3-30B-A3B-JNS",
+     .jns_gb = 13.83,
      .flat_sha =
          "7a77e62a3d6b1df321f455472e0b970a09eb3534ec76982a6e169087d4897656",
      .ram_gb = 8,
@@ -165,6 +181,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"a015794bfb1d69cb03dbb86b185fb2b9b339f757df5f8f9dd9ebdab8f6ed5d32"},
      .gguf_gb = 18.6,
      .out = "qwen3-30b-a3b-bq4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3-30B-A3B-JNS",
+     .jns_gb = 18.63,
      .flat_sha =
          "c2089d293f10d2e0fdabbb7ea6f17d6834f3027480de987fb6dd718e301eaa04",
      .jns_sha =
@@ -179,6 +197,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"b46fedd33e0bfb0cae308aa3c158d0a4b2c4a1d2185a1ed6f093cdaf39064772"},
      .gguf_gb = 22.3,
      .out = "qwen3.6-35b-a3b-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3.6-35B-A3B-JNS",
+     .jns_gb = 22.29,
      .flat_sha =
          "31772037300f332d712f4ef8dd5e7251c7cd76cf6b9dab33b089394b7c079fb2",
      .jns_sha =
@@ -193,6 +213,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"d103b2733ec1012a52d01edda66b7e5c24ae50508c9f99f5297ea459ef3c061a"},
      .gguf_gb = 48.4,
      .out = "qwen3-next-80b-a3b-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3-Next-80B-A3B-Instruct-JNS",
+     .jns_gb = 49.35,
      .flat_sha =
          "fa9a50dd910de4e78064ecff17aef43286694277eea3a89a57e9921ca2bfd2da",
      .jns_sha =
@@ -219,6 +241,8 @@ const struct janas_model_entry janas_catalog[] = {
           "249c768cc5f130dc731567d6edcbdacc48e14dec9e02c5dbe2b2185d2c5bdb2b"},
      .gguf_gb = 48.4,
      .out = "qwen3-coder-next-q4km.jns",
+     .jns_repo = "prabanta-dev/Qwen3-Coder-Next-JNS",
+     .jns_gb = 48.41,
      .flat_sha =
          "5912d964247002473eff1811058b4ffadf7b9bb47ae336c486cdf2964de68382",
      .jns_sha =
@@ -233,6 +257,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439"},
      .gguf_gb = 0.64,
      .out = "qwen3-embedding-0.6b-q8.jns",
+     .jns_repo = "prabanta-dev/Qwen3-Embedding-0.6B-JNS",
+     .jns_gb = 0.64,
      .flat_sha =
          "1e8eb8cbeba7a1a657354d259c5730bb79f6087160a9ca8da901bd08bdbe943f",
      .ram_gb = 2,
@@ -245,6 +271,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"740185b21d22ceb83a11c3aa62ad5842ef32c70f6096d756bbee85a1e4ec34b8"},
      .gguf_gb = 3.1,
      .out = "gemma-4-e2b-it-q4km.jns",
+     .jns_repo = "prabanta-dev/gemma-4-E2B-it-JNS",
+     .jns_gb = 3.21,
      .flat_sha =
          "1f18e08878df41f377d563b38048d41841c7973ddea845cd9672fcf23cbd864b",
      .extra = JANAS_EXTRA_GGUF,
@@ -263,6 +291,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"85a896a047553e842f25297ee5b031d64ff30147d9c4af17b1e4b394cd1fab87"},
      .gguf_gb = 5.0,
      .out = "gemma-4-e4b-it-q4km.jns",
+     .jns_repo = "prabanta-dev/gemma-4-E4B-it-JNS",
+     .jns_gb = 5.08,
      .flat_sha =
          "7ec828e9bdc1ada2eda907e93b87072f3180f2e8cba5ccedcd360d1a53858675",
      .extra = JANAS_EXTRA_GGUF,
@@ -281,6 +311,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"0a270ec9fe6b34f4a0d33992b6135117b484ebc4766ab76b51d4ae8c457e4c42"},
      .gguf_gb = 7.1,
      .out = "gemma-4-12b-it-q4km.jns",
+     .jns_repo = "prabanta-dev/gemma-4-12B-it-JNS",
+     .jns_gb = 7.59,
      .flat_sha =
          "cae09e04598891dea6e9cd93fb496fbde08d822ac35de4ff45dbfab1ea25c4dd",
      .extra = JANAS_EXTRA_GGUF,
@@ -299,6 +331,8 @@ const struct janas_model_entry janas_catalog[] = {
          {"f2c28b3dc4776931ac6f879e11f203dec637ea0f14267a86ec8f6165f63f293f"},
      .gguf_gb = 16.9,
      .out = "gemma-4-26b-a4b-it-udq4km.jns",
+     .jns_repo = "prabanta-dev/gemma-4-26B-A4B-it-JNS",
+     .jns_gb = 18.76,
      .flat_sha =
          "35c3845bbc21de52bf630d3c7455b4bb5379c34487b5925e020ec2e573931666",
      .extra = JANAS_EXTRA_GGUF,
