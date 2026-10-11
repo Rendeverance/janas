@@ -149,8 +149,9 @@ struct janas_gpu {
     VkPipeline pipe32[4];
     VkPipeline pipex4, pipe3, pipei3; /* IQ4_XS, Q3_K, IQ3_S */
     /* Q4_K on many vectors in tiles (q4k_mm.comp), MM_ROWS x MM_VECS */
-    VkShaderModule sm_mm, sm_mm6, sm_mm6s, sm_mm80, sm_mm5, sm_dm[2];
-    VkPipeline pipe_mm, pipe_mm6, pipe_mm6s, pipe_mm80, pipe_mm5, pipe_dm[2];
+    VkShaderModule sm_mm, sm_mm6, sm_mm6s, sm_mm80, sm_mm5, sm_mm3, sm_dm[2];
+    VkPipeline pipe_mm, pipe_mm6, pipe_mm6s, pipe_mm80, pipe_mm5, pipe_mm3,
+        pipe_dm[2];
     int only_fast; /* janas_gpu_set_only_fast */
     /* a mixture's experts in one dispatch (experts_id): Q4_K, Q6_K_P */
     VkShaderModule sm_id4, sm_id6, sm_id6s;

@@ -8,7 +8,7 @@
  * all of them, so beyond a few tokens the product is bound by arithmetic and
  * the figure of merit is multiply-accumulates per second.
  *
- * Usage: bench_gemm [rows cols q4k|q6k|q6kp1|q6kp2|q6kp3 threads [gpu]]
+ * Usage: bench_gemm [rows cols q4k|q6k|q3k|q6kp1|q6kp2|q6kp3 threads [gpu]]
  * q6kpL is Q6_K in bit planes with L of the three planes in memory.
  * Defaults: 12288 x 2048 Q4_K (Qwen3-Next ssm_in), 12 threads on CPUs 0-11.
  * gpu: the products of a prompt's blocks on the GPU (the fast prompt's
@@ -40,6 +40,8 @@ int main(int argc, char **argv)
     int type = JANAS_Q4_K;
     if (!strcmp(kind, "q6k"))
         type = JANAS_Q6_K;
+    else if (!strcmp(kind, "q3k"))
+        type = JANAS_Q3_K;
     else if (!strncmp(kind, "q6kp", 4)) {
         type = JANAS_Q6_K_P;
         level = kind[4] ? kind[4] - '0' : 3;
@@ -80,6 +82,8 @@ int main(int argc, char **argv)
             ((struct janas_block_q6kp *)w)[b].d = janas_fp32_to_fp16(0.001f);
         } else if (type == JANAS_Q6_K) {
             ((struct janas_block_q6k *)w)[b].d = janas_fp32_to_fp16(0.001f);
+        } else if (type == JANAS_Q3_K) {
+            ((struct janas_block_q3k *)w)[b].d = janas_fp32_to_fp16(0.001f);
         } else {
             ((struct janas_block_q4k *)w)[b].d = janas_fp32_to_fp16(0.001f);
             ((struct janas_block_q4k *)w)[b].dmin = janas_fp32_to_fp16(0.0005f);

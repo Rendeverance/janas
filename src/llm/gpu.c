@@ -29,6 +29,7 @@
 #include "q4k_mmq.h"      /* janas_spv_q4k_mmq */
 #include "q6kp_mmq.h"     /* janas_spv_q6kp_mmq */
 #include "q6k_mmq.h"      /* janas_spv_q6k_mmq */
+#include "q3k_mmq.h"      /* janas_spv_q3k_mmq */
 #include "q80_mmq.h"      /* janas_spv_q80_mmq */
 #include "q5k_mmq.h"      /* janas_spv_q5k_mmq */
 #include "dense_mm.h"     /* janas_spv_dense_mm */
@@ -518,6 +519,9 @@ struct janas_gpu *janas_gpu_create(char *err, size_t err_len)
         (r = make_pipeline(g, janas_spv_q6k_mmq, sizeof(janas_spv_q6k_mmq),
                            &g->sm_mm6s, &g->pipe_mm6s, 0, NV_PER_GROUP,
                            g->sg)) != VK_SUCCESS ||
+        (r = make_pipeline(g, janas_spv_q3k_mmq, sizeof(janas_spv_q3k_mmq),
+                           &g->sm_mm3, &g->pipe_mm3, 0, NV_PER_GROUP, g->sg)) !=
+            VK_SUCCESS ||
         (r = make_pipeline(g, janas_spv_q80_mmq, sizeof(janas_spv_q80_mmq),
                            &g->sm_mm80, &g->pipe_mm80, 0, NV_PER_GROUP,
                            g->sg)) != VK_SUCCESS ||
@@ -779,6 +783,8 @@ void janas_gpu_destroy(struct janas_gpu *g)
             g->vkDestroyPipeline(g->dev, g->pipe_mm6, NULL);
         if (g->pipe_mm6s)
             g->vkDestroyPipeline(g->dev, g->pipe_mm6s, NULL);
+        if (g->pipe_mm3)
+            g->vkDestroyPipeline(g->dev, g->pipe_mm3, NULL);
         if (g->pipe_mm80)
             g->vkDestroyPipeline(g->dev, g->pipe_mm80, NULL);
         if (g->pipe_mm5)
@@ -803,6 +809,8 @@ void janas_gpu_destroy(struct janas_gpu *g)
         }
         if (g->sm_mm6s)
             g->vkDestroyShaderModule(g->dev, g->sm_mm6s, NULL);
+        if (g->sm_mm3)
+            g->vkDestroyShaderModule(g->dev, g->sm_mm3, NULL);
         if (g->sm_mm80)
             g->vkDestroyShaderModule(g->dev, g->sm_mm80, NULL);
         if (g->sm_mm6)
@@ -1405,6 +1413,7 @@ static int fast_type(const struct janas_matvec_task *t)
 {
     return t->type == JANAS_Q4_K || t->type == JANAS_Q6_K ||
            t->type == JANAS_Q8_0 || t->type == JANAS_Q5_K ||
+           t->type == JANAS_Q3_K ||
            (t->type == JANAS_Q6_K_P && plane_level(t) == 3);
 }
 
@@ -1470,6 +1479,11 @@ int janas_g_record_task(struct janas_gpu *g, VkPipeline *bound,
     } else if (t->type == JANAS_Q6_K && nv >= JANAS_GPU_FAST_N &&
                g->pipe_mm6s && mm_on()) {
         want = g->pipe_mm6s;
+        nvg = 64;
+        rows_wg = 64;
+    } else if (t->type == JANAS_Q3_K && nv >= JANAS_GPU_FAST_N && g->pipe_mm3 &&
+               mm_on()) {
+        want = g->pipe_mm3;
         nvg = 64;
         rows_wg = 64;
     } else if (t->type == JANAS_Q5_K && nv >= JANAS_GPU_FAST_N && g->pipe_mm5 &&
