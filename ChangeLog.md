@@ -2,8 +2,10 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
-## [2026-10-11] - Models downloaded already converted
+## [2026-10-11] - A binary package, and the models already converted
 
+- **A binary package for Linux x86-64**, built by GitHub Actions on Ubuntu 22.04 and attached to each release: `janas-linux-x86_64.tar.gz`, at a link that always gives the newest (`releases/latest/download/janas-linux-x86_64.tar.gz`). The programs and the converters, Janas's services in `services/` with their pages, the libraries and their headers, the SHA-256 of every file; no script. It runs with the C library of Ubuntu 22.04, Debian 12 and anything newer, the GPU included. `janas-chat` finds the services in `services/` beside it.
+- **The converted models are a promise**: the `.jns` files on Hugging Face (format version 2) will be read by every later version of Janas.
 - **`janas-get` downloads the `.jns` files themselves**, from the project's repositories on Hugging Face (`prabanta-dev/<model>-JNS`): no conversion on your machine, half the room on disk, every file checked against the same fingerprints of MODELS.md. `--from-gguf` keeps the old way (the original GGUF, converted here), and `janas-get` takes it by itself where a converted file is not on Hugging Face; `janas-get hf:<owner>/<repo>/<file.jns>` takes any `.jns`. `janas-get list` shows the size of the converted files.
 
 ## [2026-10-10] - The tuner leaves cores another program has taken
