@@ -99,7 +99,10 @@ BIN="bin/$CPU-$OS"
 SUFFIX=""
 [ "$VARIANT" != release ] && SUFFIX="-$VARIANT"
 
-CFLAGS=(-std=gnu11 -Wall -Wextra -Werror -pthread -fPIC -fvisibility=hidden
+# _GNU_SOURCE for every file, empty as the files that define it write it:
+# the C library of Ubuntu 22.04 (the binary package's) declares memmem,
+# strcasestr and the like only with it, where a newer one does by default
+CFLAGS=(-std=gnu11 -D_GNU_SOURCE= -Wall -Wextra -Werror -pthread -fPIC -fvisibility=hidden
     -Isrc -Iinclude)
 case "$VARIANT" in
 release) CFLAGS+=(-O2 -DNDEBUG) ;;
