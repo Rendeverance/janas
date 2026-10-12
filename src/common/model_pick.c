@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
    Copyright (C) 2026 Maurizio Cammalleri */
 /*
- * models.c - janas-chat's models by name (see models.h).
+ * model_pick.c - a model by name, for janas-chat and janas-bench (see
+ * model_pick.h).
  */
 #define _GNU_SOURCE
-#include "models.h"
+#include "common/model_pick.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,7 +40,7 @@ static char *ask_line(const char *question, char *buf, size_t len)
     return buf;
 }
 
-int chat_ask_yes(const char *question)
+int janas_ask_yes(const char *question)
 {
     char b[64];
     fprintf(stderr, "%s [y/N] ", question);
@@ -49,7 +50,7 @@ int chat_ask_yes(const char *question)
     return b[0] == 'y' || b[0] == 'Y';
 }
 
-static void set_key(struct chat_model *cm, const char *base)
+static void set_key(struct janas_model_pick *cm, const char *base)
 {
     snprintf(cm->key, sizeof(cm->key), "%s", base);
     size_t n = strlen(cm->key);
@@ -60,7 +61,7 @@ static void set_key(struct chat_model *cm, const char *base)
 /* The catalog's chat models, numbered from 1, with what is already here. */
 static void list(const char *dir)
 {
-    fprintf(stderr, "The models janas-chat knows (in %s):\n\n", dir);
+    fprintf(stderr, "The models Janas knows (in %s):\n\n", dir);
     int k = 0;
     for (int i = 0; i < janas_catalog_n; i++) {
         const struct janas_model_entry *m = &janas_catalog[i];
@@ -88,7 +89,8 @@ static const struct janas_model_entry *nth(int k)
 }
 
 /* janas-get, beside this program, for the model into dir; 0 if it made it */
-static int fetch(const struct janas_model_entry *m, const char *dir)
+static int fetch(const char *prog, const struct janas_model_entry *m,
+                 const char *dir)
 {
     char self[4096], tool[4200];
     if (janas_exe_path(self, sizeof self) < 0)
@@ -103,7 +105,7 @@ static int fetch(const struct janas_model_entry *m, const char *dir)
     char err[256];
     if (janas_proc_start(&pr, argv, NULL, NULL, -1, -1, -1, 0, err,
                          sizeof err) != 0) {
-        fprintf(stderr, "janas-chat: cannot start %s\n", tool);
+        fprintf(stderr, "%s: cannot start %s\n", prog, tool);
         return -1;
     }
     int code = -1;
@@ -113,10 +115,10 @@ static int fetch(const struct janas_model_entry *m, const char *dir)
 
 /*
  * The folder for a first download: the proposed one, or another the user
- * types - and then a word on how janas-chat will find it again, since only
- * JANAS_MODELS or --models tell it.
+ * types - and then a word on how the programs will find it again, since
+ * only JANAS_MODELS or --models tell them.
  */
-static int choose_dir(char *dir, size_t len)
+static int choose_dir(const char *prog, char *dir, size_t len)
 {
     const char *e = getenv("JANAS_MODELS");
     if ((e && *e) || is_dir(dir) || !isatty(STDIN_FILENO))
@@ -129,14 +131,15 @@ static int choose_dir(char *dir, size_t len)
     if (b[0]) {
         snprintf(dir, len, "%s", b);
         fprintf(stderr,
-                "Note: janas-chat looks in %s only when told - start it with "
+                "Note: %s looks in %s only when told - start it with "
                 "--models %s, or set JANAS_MODELS=%s.\n",
-                dir, dir, dir);
+                prog, dir, dir, dir);
     }
     return 0;
 }
 
-int chat_model_resolve(const char *arg, struct chat_model *cm)
+int janas_model_pick(const char *prog, const char *arg,
+                     struct janas_model_pick *cm)
 {
     memset(cm, 0, sizeof(*cm));
     if (arg && is_file(arg)) {
@@ -155,12 +158,13 @@ int chat_model_resolve(const char *arg, struct chat_model *cm)
         return 0;
     }
     if (arg && (strchr(arg, '/') || strstr(arg, ".jns"))) {
-        fprintf(stderr, "janas-chat: there is no file %s\n", arg);
+        fprintf(stderr, "%s: there is no file %s\n", prog, arg);
         return -1;
     }
     if (janas_models_dir(cm->dir, sizeof(cm->dir)) != 0) {
-        fprintf(stderr, "janas-chat: no home directory for the models: give "
-                        "a model's path\n");
+        fprintf(stderr,
+                "%s: no home directory for the models: give a model's path\n",
+                prog);
         return -1;
     }
     const struct janas_model_entry *m = NULL;
@@ -168,14 +172,13 @@ int chat_model_resolve(const char *arg, struct chat_model *cm)
         m = janas_catalog_find(arg);
         if (!m || m->not_chat) {
             fprintf(stderr,
-                    "janas-chat: no model called %s (janas-chat with no "
-                    "model lists them)\n",
-                    arg);
+                    "%s: no model called %s (%s with no model lists them)\n",
+                    prog, arg, prog);
             return -1;
         }
     } else {
         if (!isatty(STDIN_FILENO)) {
-            fprintf(stderr, "janas-chat: no model given\n");
+            fprintf(stderr, "%s: no model given\n", prog);
             return -1;
         }
         list(cm->dir);
@@ -193,23 +196,17 @@ int chat_model_resolve(const char *arg, struct chat_model *cm)
                 fprintf(stderr, "not in the list: %s\n", b);
         }
     }
-    if (m->test_only)
-        fprintf(stderr,
-                "note: %s is a test model of the engine, not for chatting: "
-                "its answers are often wrong (janas-chat with no model lists "
-                "the others)\n",
-                m->name);
     cm->entry = m;
     set_key(cm, m->name);
     snprintf(cm->path, sizeof(cm->path), "%s/%s", cm->dir, m->out);
     if (is_file(cm->path))
         return 0;
     if (!isatty(STDIN_FILENO)) {
-        fprintf(stderr, "janas-chat: %s is not here yet: janas-get %s\n",
-                m->name, m->name);
+        fprintf(stderr, "%s: %s is not here yet: janas-get %s\n", prog, m->name,
+                m->name);
         return -1;
     }
-    if (choose_dir(cm->dir, sizeof(cm->dir)) != 0)
+    if (choose_dir(prog, cm->dir, sizeof(cm->dir)) != 0)
         return -1;
     snprintf(cm->path, sizeof(cm->path), "%s/%s", cm->dir, m->out);
     if (is_file(cm->path))
@@ -227,16 +224,17 @@ int chat_model_resolve(const char *arg, struct chat_model *cm)
                  "%s is not here: download it (%.1f GB, and about %.0f GB "
                  "free while it is converted) with its prediction file?",
                  m->name, m->gguf_gb, m->gguf_gb * 2.0 + 0.5);
-    if (!chat_ask_yes(q))
+    if (!janas_ask_yes(q))
         return -1;
-    if (fetch(m, cm->dir) != 0 || !is_file(cm->path)) {
-        fprintf(stderr, "janas-chat: %s was not made\n", cm->path);
+    if (fetch(prog, m, cm->dir) != 0 || !is_file(cm->path)) {
+        fprintf(stderr, "%s: %s was not made\n", prog, cm->path);
         return -1;
     }
     return 0;
 }
 
-const char *chat_model_draft(const struct chat_model *cm, char *buf, size_t len)
+const char *janas_model_pick_draft(const struct janas_model_pick *cm, char *buf,
+                                   size_t len)
 {
     const struct janas_model_entry *d =
         cm->entry && cm->entry->draft ? janas_catalog_find(cm->entry->draft)
@@ -247,16 +245,8 @@ const char *chat_model_draft(const struct chat_model *cm, char *buf, size_t len)
     return is_file(buf) ? buf : NULL;
 }
 
-int chat_words_any(int n, char *const *w, const char *const *opts)
-{
-    for (int i = 0; i < n; i++)
-        for (int k = 0; opts[k]; k++)
-            if (strcmp(w[i], opts[k]) == 0)
-                return 1;
-    return 0;
-}
-
-const char *chat_model_mtp(const struct chat_model *cm, char *buf, size_t len)
+const char *janas_model_pick_mtp(const struct janas_model_pick *cm, char *buf,
+                                 size_t len)
 {
     if (cm->entry) {
         if (cm->entry->extra == JANAS_EXTRA_NONE || !cm->entry->extra_out)
@@ -265,13 +255,4 @@ const char *chat_model_mtp(const struct chat_model *cm, char *buf, size_t len)
         return is_file(buf) ? buf : NULL;
     }
     return janas_llm_find_mtp(cm->path, buf, len) == JANAS_LLM_OK ? buf : NULL;
-}
-
-const char *chat_words_last(int n, char *const *w, const char *opt)
-{
-    const char *v = NULL;
-    for (int i = 0; i + 1 < n; i++)
-        if (strcmp(w[i], opt) == 0)
-            v = w[i + 1];
-    return v;
 }

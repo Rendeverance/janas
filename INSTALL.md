@@ -84,10 +84,10 @@ The engine tunes itself while it runs: it tries the configurations your machine 
 ## Measuring your machine
 
 ```sh
-bin/x86_64-linux/janas-bench qwen3-next.jns --mtp qwen3-next-mtp.jns
+bin/x86_64-linux/janas-bench qwen3-next-80b-a3b
 ```
 
-It takes a few minutes: it measures prompt processing and generation speed for every configuration, fills the tuning profile (so chatting starts tuned) and writes a report, `janas-bench-<date>.txt`, in the current directory. The report lists your processor, memory, GPU, the speeds and the choices: send it along with any feedback.
+The model is a name of the catalog, downloaded after asking if it is not there yet, with its prediction file; a `.jns` file works too, and with no model it shows the list. It takes a few minutes: it measures prompt processing and generation speed for every configuration, fills the tuning profile (so chatting starts tuned) and writes a report, `janas-bench-<date>.txt`, in the current directory. The report lists your processor, memory, GPU, the speeds and the choices: send it along with any feedback.
 
 ## Troubleshooting
 

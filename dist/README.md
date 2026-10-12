@@ -28,6 +28,7 @@ Janas-LLM, the inference engine of Janas, runs large language models on ordinary
 ./janas-get list                 # the models it knows, their size, the memory they want
 ./janas-get qwen3-4b             # downloads it, checked, into ~/.local/share/janas/models
 ./janas-chat qwen3-4b            # and talk to it
+./janas-bench qwen3-4b           # how fast this machine runs it: a report to send back
 ```
 
 `./janas-chat` with no model shows the list and downloads the one you choose, after asking. The models come already converted from Hugging Face ([prabanta-dev](https://huggingface.co/prabanta-dev)), each file checked against the fingerprints of `MODELS.md`.

@@ -13,8 +13,13 @@ body:
         and the editor first, or the numbers are partly about them:
 
         ```sh
-        bin/x86_64-linux/janas-bench <model.jns>
+        bin/x86_64-linux/janas-bench <model>
         ```
+
+        `<model>` is a name of the models Janas knows (`qwen3-4b`; with
+        none it shows the list and downloads the one you choose) or a
+        `.jns` file. From the binary package: `./janas-bench <model>`, on
+        Windows `.\janas-bench <model>`.
 
         It leaves a `janas-bench-<date>.txt` in the current directory. That
         file already carries the CPU, the core layout, the GPU if there is one,

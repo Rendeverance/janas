@@ -3,10 +3,10 @@
 ## Measuring your machine
 
 ```sh
-bin/x86_64-linux/janas-bench qwen3-next.jns
+bin/x86_64-linux/janas-bench qwen3-4b
 ```
 
-Close what you can before running it: it measures the machine you give it, and a browser with thirty tabs is part of the machine. It tries the configurations the machine offers — how many threads, which cores, with and without the GPU — on real passes of the model, keeps the fastest, writes them into `~/.cache/janas` so the next start begins from them, and leaves a report in the current directory. On the development laptop that report says, among other things (10 October 2026, ten models), that a single token and a prompt go fastest on the performance cores' 12 threads, while a draft check - a few tokens at once - goes fastest on all the usable cores: the kinds of pass want different threads, which is why each is tuned on its own.
+It takes the model as `janas-chat` does: a name of the models Janas knows (downloaded, after asking, if it is not there yet), a `.jns` file, or nothing, and then the list to choose from; the model's prediction file comes with it as in the chat (`--no-mtp`: without). Close what you can before running it: it measures the machine you give it, and a browser with thirty tabs is part of the machine. It tries the configurations the machine offers — how many threads, which cores, with and without the GPU — on real passes of the model, keeps the fastest, writes them into `~/.cache/janas` so the next start begins from them, and leaves a report in the current directory. On the development laptop that report says, among other things (10 October 2026, ten models), that a single token and a prompt go fastest on the performance cores' 12 threads, while a draft check - a few tokens at once - goes fastest on all the usable cores: the kinds of pass want different threads, which is why each is tuned on its own.
 
 ## Helping it run on more hardware
 
@@ -24,10 +24,10 @@ It builds Janas and runs its tests, downloads a model from Hugging Face (checkin
 **What to send, by hand.** Run the benchmark and attach the report it writes (a `janas-bench-<date>.txt` in the current directory):
 
 ```sh
-bin/x86_64-linux/janas-bench <model.jns>
+bin/x86_64-linux/janas-bench <model>
 ```
 
-The report already carries the CPU's name, the core layout, the GPU if there is one, and the speed of every configuration tried. Add:
+`<model>` is a name from the list `janas-bench` shows when given none (`qwen3-4b`), or a `.jns` file. The report already carries the CPU's name, the core layout, the GPU if there is one, and the speed of every configuration tried. Add:
 
 - the **distribution** and kernel (`uname -a`), and the **RAM** (`free -g`);
 - the **disk** the model sits on (NVMe? SATA? over USB?);

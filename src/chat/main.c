@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include "common/env_names.h"
+#include "common/model_pick.h"
 #include "common/sysinfo.h"
 #include "common/words.h"
 #include "edit.h"
@@ -37,7 +38,7 @@
 #include "janas/llm.h"
 #include "markdown.h"
 #include "mcp_chat.h"
-#include "models.h"
+#include "options.h"
 #include "tune.h"
 #include "scroll.h"
 #include "term.h"
@@ -1612,9 +1613,15 @@ int main(int argc, char **argv)
         where = chat_words_last(cn, cw, "--models");
     if (where)
         setenv("JANAS_MODELS", where, 1);
-    struct chat_model cm;
-    if (chat_model_resolve(marg, &cm) != 0)
+    struct janas_model_pick cm;
+    if (janas_model_pick("janas-chat", marg, &cm) != 0)
         return 1;
+    if (cm.entry && cm.entry->test_only)
+        fprintf(stderr,
+                "note: %s is a test model of the engine, not for chatting: "
+                "its answers are often wrong (janas-chat with no model lists "
+                "the others)\n",
+                cm.entry->name);
     char mpath[1024];
     char **mw = conf_path(mpath, sizeof(mpath), 0, cm.key) == 0
                     ? conf_read(mpath, &mn, &mconf_text)
@@ -1696,9 +1703,9 @@ int main(int argc, char **argv)
         int have = access(tpath, F_OK) == 0;
         int go = tune == 1;
         if (!go && !have && isatty(STDIN_FILENO) && isatty(STDERR_FILENO)) {
-            go = chat_ask_yes("Measure how this model runs fastest on this "
-                              "machine (a reply or two each way, a minute "
-                              "or so on a large model)?");
+            go = janas_ask_yes("Measure how this model runs fastest on this "
+                               "machine (a reply or two each way, a minute "
+                               "or so on a large model)?");
             if (!go) { /* asked once: the answer is kept */
                 FILE *f = fopen(tpath, "w");
                 if (f) {
@@ -1712,10 +1719,10 @@ int main(int argc, char **argv)
             struct janas_llm_params probe = mp;
             static char probe_mtp[4096], probe_draft[4096];
             if (!probe.mtp_path && !probe.draft_path && !no_mtp &&
-                !(probe.draft_path =
-                      chat_model_draft(&cm, probe_draft, sizeof(probe_draft))))
+                !(probe.draft_path = janas_model_pick_draft(
+                      &cm, probe_draft, sizeof(probe_draft))))
                 probe.mtp_path =
-                    chat_model_mtp(&cm, probe_mtp, sizeof(probe_mtp));
+                    janas_model_pick_mtp(&cm, probe_mtp, sizeof(probe_mtp));
             chat_tune_run(cm.path, &probe, &cp, gpu, dims, tpath);
         }
         int tn = 0;
@@ -1751,12 +1758,12 @@ int main(int argc, char **argv)
         no_mtp = 1;
     if (!mp.mtp_path && !mp.draft_path && !no_mtp &&
         (mp.draft_path =
-             chat_model_draft(&cm, draft_found, sizeof(draft_found))))
+             janas_model_pick_draft(&cm, draft_found, sizeof(draft_found))))
         fprintf(stderr,
                 "drafts from %s, as the catalog says (--no-mtp: without)\n",
                 cm.entry->draft);
     if (!mp.mtp_path && !mp.draft_path && !no_mtp &&
-        chat_model_mtp(&cm, mtp_found, sizeof(mtp_found))) {
+        janas_model_pick_mtp(&cm, mtp_found, sizeof(mtp_found))) {
         mp.mtp_path = mtp_found;
         const char *b = strrchr(mtp_found, '/');
         fprintf(stderr,

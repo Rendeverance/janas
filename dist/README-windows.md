@@ -32,9 +32,10 @@ In a terminal (Windows Terminal, PowerShell or the Command Prompt), in the folde
 .\janas-get list
 .\janas-get qwen3-4b
 .\janas-chat qwen3-4b
+.\janas-bench qwen3-4b
 ```
 
-The first says which models it knows, their size and the memory they want; the second downloads one, checked, into `%LOCALAPPDATA%\janas\models`; the third talks to it.
+The first says which models it knows, their size and the memory they want; the second downloads one, checked, into `%LOCALAPPDATA%\janas\models`; the third talks to it; the fourth measures how fast this machine runs it and writes a report to send back.
 
 `.\janas-chat` with no model shows the list and downloads the one you choose, after asking. The models come already converted from Hugging Face ([prabanta-dev](https://huggingface.co/prabanta-dev)), each file checked against the fingerprints of `MODELS.md`.
 

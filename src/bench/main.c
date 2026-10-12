@@ -7,14 +7,20 @@
  * makes from them. The measurements also fill the engine's tuning profile
  * (~/.cache/janas/), so the next start is tuned already.
  *
- * Usage: janas-bench <model.jns> [--mtp <file>] [--prompt <tokens>]
- *                    [--gen <tokens>] [--ctx <tokens>] [--cache <GiB>]
- *                    [--reserve <GiB>]
+ * Usage: janas-bench [<model>] [--models <dir>] [--mtp <file> | --no-mtp]
+ *                    [--prompt <tokens>] [--gen <tokens>] [--ctx <tokens>]
+ *                    [--cache <GiB>] [--reserve <GiB>]
  *                    [--rounds <n>] (default 3, alternating the order)
  *                    [--settle <seconds>] (after the warm-up, wait up to
  *                    that long for the cache's background filling to end:
  *                    the configurations measured on a warm cache, as a
  *                    chat runs after its first minutes)
+ *
+ * The model is taken as janas-chat takes it (common/model_pick.c): a .jns
+ * file, a name of the catalog (qwen3-4b), downloaded if it is not there
+ * yet, or nothing, and then the list to choose from. Its prediction file
+ * comes with it as in the chat: the one the catalog names, or for a file
+ * of no catalog the one found beside it (--no-mtp: without).
  *
  * The prompt is prose that does not repeat itself (only a prompt longer
  * than the text repeats it, and the report says so). The drafts of the
@@ -35,6 +41,7 @@
 #include <time.h>
 
 #include "common/env_names.h"
+#include "common/model_pick.h"
 #include "common/sysinfo.h"
 #include "common/words.h"
 #include "janas/llm.h"
@@ -180,11 +187,15 @@ static int measure_chat(janas_llm *llm, uint32_t n_gen, int sampled,
 int main(int argc, char **argv)
 {
     janas_env_check("janas-bench");
-    if (argc < 2 || argv[1][0] == '-') {
-        fprintf(stderr, "usage: janas-bench <model.jns> [--mtp <file>] "
-                        "[--prompt <tokens>] [--gen <tokens>] [--ctx <tokens>] "
-                        "[--cache <GiB>] [--reserve <GiB>] [--rounds <n>] "
-                        "[--settle <seconds>]\n");
+    if (argc > 1 &&
+        (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
+        fprintf(stderr,
+                "usage: janas-bench [<model>] [--models <dir>] "
+                "[--mtp <file> | --no-mtp] [--prompt <tokens>] "
+                "[--gen <tokens>] [--ctx <tokens>] [--cache <GiB>] "
+                "[--reserve <GiB>] [--rounds <n>] [--settle <seconds>]\n"
+                "<model>: a .jns file, or a name of the models Janas knows "
+                "(downloaded if it is not there yet); none: the list\n");
         return 2;
     }
     struct janas_llm_params p;
@@ -194,16 +205,30 @@ int main(int argc, char **argv)
     uint32_t n_prompt = 256, n_gen = 64;
     int rounds = 3;
     long long settle = 0;
-    static const char *const options[] = {"--mtp",     "--prompt", "--gen",
-                                          "--ctx",     "--rounds", "--cache",
-                                          "--reserve", "--settle"};
-    for (int i = 2; i < argc; i += 2) {
+    const char *model = NULL, *models = NULL;
+    int no_mtp = 0;
+    static const char *const options[] = {
+        "--mtp", "--no-mtp", "--models", "--prompt",  "--gen",
+        "--ctx", "--rounds", "--cache",  "--reserve", "--settle"};
+    for (int i = 1; i < argc; i += 2) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         char why[200] = "";
         long long x = 0;
         double r = 0;
+        if (a[0] != '-' && !model) {
+            model = a;
+            i--;
+            continue;
+        }
+        if (strcmp(a, "--no-mtp") == 0) {
+            no_mtp = 1;
+            i--;
+            continue;
+        }
         if (strcmp(a, "--mtp") == 0 && v)
             p.mtp_path = v;
+        else if (strcmp(a, "--models") == 0 && v)
+            models = v;
         else if (strcmp(a, "--prompt") == 0 || strcmp(a, "--gen") == 0 ||
                  strcmp(a, "--ctx") == 0 || strcmp(a, "--rounds") == 0) {
             if (janas_word_int(v, 1, UINT32_MAX, &x, why, sizeof why) == 0) {
@@ -239,6 +264,25 @@ int main(int argc, char **argv)
                         "context\n");
         return 2;
     }
+    if (no_mtp && p.mtp_path) {
+        fprintf(stderr, "janas-bench: --mtp and --no-mtp together\n");
+        return 2;
+    }
+    if (models)
+        setenv("JANAS_MODELS", models, 1);
+    struct janas_model_pick mp;
+    if (janas_model_pick("janas-bench", model, &mp) != 0)
+        return 1;
+    static char mtp_found[4400];
+    if (!p.mtp_path && !no_mtp &&
+        janas_model_pick_mtp(&mp, mtp_found, sizeof(mtp_found))) {
+        p.mtp_path = mtp_found;
+        const char *b = strrchr(mtp_found, '/');
+        fprintf(stderr,
+                "multi-token prediction from %s, found beside the model "
+                "(--no-mtp: without)\n",
+                b ? b + 1 : mtp_found);
+    }
 
     char path[512], stamp[32];
     time_t tt = time(NULL);
@@ -265,7 +309,7 @@ int main(int argc, char **argv)
         mains < 0 ? "unknown" : (mains ? "mains" : "battery"));
 
     janas_llm *llm;
-    if (janas_llm_open(argv[1], &p, &llm) != JANAS_LLM_OK) {
+    if (janas_llm_open(mp.path, &p, &llm) != JANAS_LLM_OK) {
         out("cannot open the model: %s\n", janas_llm_last_error());
         return 1;
     }

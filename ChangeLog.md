@@ -2,6 +2,10 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-12] - janas-bench takes a model by name
+
+- **`janas-bench` takes the model as `janas-chat` does**: a name of the models Janas knows (`janas-bench qwen3-4b`), downloaded after asking if it is not there yet; with no model, the list to choose from; a `.jns` file as before. The model's prediction file comes with it as in the chat - the one the catalog names, or for another file the one beside it - so the drafts are measured as the chat uses them; `--no-mtp` leaves it out, `--models` says where the models are. Both programs share one way of finding a model (`src/common/model_pick.c`).
+
 ## [2026-10-12] - Janas on Windows
 
 - **The same sources build for Windows x86-64**, with MinGW-w64 from Linux (`JANAS_OS=windows ./build.sh`): every program, the two libraries as DLLs, Janas's services (janas-system with Windows's own calls), the GPU through Vulkan; nothing needed but Windows's own DLLs. Run on Windows 11 (build 26300) on the development laptop on 12 October 2026: all 31 tests pass, and with the same files and commands as on Linux it writes as fast (Qwen3-4B 25.6 tok/s against 27, Qwen3-30B-A3B 34.2 against 32) and reads a prompt of 1,024 tokens as fast with the mixture (Qwen3-30B-A3B 132 against 135) and 1.8 times as fast with the dense model (Qwen3-4B 346 against 193), whose whole blocks go to the GPU, there through Intel's own driver.
