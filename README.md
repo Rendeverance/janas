@@ -1,6 +1,6 @@
 # Janas
 
-[![Status: experimental](https://img.shields.io/badge/status-experimental-orange.svg)]() [![Platform: Linux x86-64](https://img.shields.io/badge/platform-Linux%20x86--64-lightgrey.svg)]() [![LinkedIn](https://img.shields.io/badge/LinkedIn-Maurizio%20Cammalleri-0077B5?logo=linkedin)](https://www.linkedin.com/in/maurizio-cammalleri-80a89a11/) [![Substack](https://img.shields.io/badge/Substack-Maurizio%20Cammalleri-FF6719?logo=substack)](https://cammalleri.substack.com/)
+[![Status: experimental](https://img.shields.io/badge/status-experimental-orange.svg)]() [![Platform: Linux | Windows x86-64](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20x86--64-lightgrey.svg)]() [![LinkedIn](https://img.shields.io/badge/LinkedIn-Maurizio%20Cammalleri-0077B5?logo=linkedin)](https://www.linkedin.com/in/maurizio-cammalleri-80a89a11/) [![Substack](https://img.shields.io/badge/Substack-Maurizio%20Cammalleri-FF6719?logo=substack)](https://cammalleri.substack.com/)
 
 **37 tok/s from Qwen3-Next-80B (a 48 GB model) on a laptop with 32 GB of memory, 24 without drafts, where llama.cpp manages 2.8; reading a prompt, 62 tok/s against 16.** Janas-LLM was faster than llama.cpp on every model compared on the same laptop (Debian 13 Linux, Intel Core Ultra 9 185H, its integrated Arc GPU, 32 GB, an NVMe SSD; 9-11 October 2026; the whole machine [below](#the-machine-it-grew-on)):
 
@@ -39,6 +39,8 @@ curl -LO https://github.com/prabanta-dev/janas/releases/latest/download/janas-li
 tar xf janas-linux-x86_64.tar.gz && cd janas
 ./janas-chat                     # the models it knows: pick one, it is downloaded and checked
 ```
+
+**Or on Windows** 10 (1903 or later) and 11, x86-64: download [janas-windows-x86_64.zip](https://github.com/prabanta-dev/janas/releases/latest/download/janas-windows-x86_64.zip), unpack it, and in a terminal in its `janas` folder run `.\janas-chat`. On the same laptop under Windows 11 (12 October 2026) Janas-LLM wrote as fast as on Linux (Qwen3-4B 25.6 tok/s, Qwen3-30B-A3B 34.2) and read a prompt as fast with the mixture (Qwen3-30B-A3B 132 tok/s) and 1.8 times as fast with the dense model (Qwen3-4B 346 tok/s against 193), whose whole blocks go to the GPU, through Intel's own Windows driver there.
 
 The models come already converted from [Hugging Face](https://huggingface.co/prabanta-dev); building from the sources: [Getting started](#getting-started).
 
@@ -80,6 +82,8 @@ Everything in this repository was written and measured on:
 - **Intel Core Ultra 9 185H** (6 performance cores, 8 efficiency, 2 low-power; AVX2, FMA, F16C, AVX-VNNI; integrated Arc GPU)
 - **32 GB** of DDR5 RAM
 - **1 TB NVMe SSD** (about 5.7 GB/s reading)
+
+The Windows build was run on the same laptop under Windows 11 (build 26300), with Intel's own graphics driver: its tests pass there, and how fast it was is under **Or on Windows**, above.
 
 Everything the engine does is chosen from what it measures, so another machine will make other choices — that part is meant to travel. What has never been tried is the rest: other CPUs (especially without AVX-VNNI, or AMD), discrete GPUs, slower disks, more or less memory. **If you run it somewhere else, the report from `janas-bench` is the single most useful thing you can send back** (see [Helping it run on more hardware](docs/hardware.md#helping-it-run-on-more-hardware)).
 

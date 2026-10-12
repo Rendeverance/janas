@@ -69,7 +69,7 @@ static double arg_num(const struct janas_json *args, const char *name,
 }
 
 static int fail(struct janas_buf *b, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+    __attribute__((format(gnu_printf, 2, 3)));
 
 static int fail(struct janas_buf *b, const char *fmt, ...)
 {

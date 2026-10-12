@@ -12,6 +12,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "services/common/tz.h"
 #include "services/common/geo.h"
 #include "maps.h"
 
@@ -70,14 +71,10 @@ static void jdist(struct janas_buf *b, double km)
 
 void mp_jclock(struct janas_buf *b, const char *key, time_t t, const char *tz)
 {
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    if (tz && *tz)
-        setenv("TZ", tz, 1);
-    tzset();
     struct tm lt, nt;
     time_t now = time(NULL);
-    localtime_r(&t, &lt);
-    localtime_r(&now, &nt);
+    janas_tz_local(tz, t, &lt, NULL, 0);
+    janas_tz_local(tz, now, &nt, NULL, 0);
     janas_buf_printf(b, ", \"%s\": {\"at\": \"%02d:%02d\"", key, lt.tm_hour,
                      lt.tm_min);
     if (lt.tm_yday != nt.tm_yday || lt.tm_year != nt.tm_year)
@@ -86,14 +83,6 @@ void mp_jclock(struct janas_buf *b, const char *key, time_t t, const char *tz)
                          "\"mon\": %d",
                          lt.tm_wday, lt.tm_mday, lt.tm_mon + 1);
     janas_buf_puts(b, "}");
-    if (tz && *tz) {
-        if (old)
-            setenv("TZ", old, 1);
-        else
-            unsetenv("TZ");
-        tzset();
-    }
-    free(old);
 }
 
 /* An object whose members are written as ", key: value": open it, and

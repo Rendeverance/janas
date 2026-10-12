@@ -238,7 +238,7 @@ typedef int (*srv_handler)(struct srv_req *r);
 int srv_reply_json(struct srv_req *r, unsigned status, char *json, size_t n);
 int srv_reply_error(struct srv_req *r, unsigned status, const char *type,
                     const char *code, const char *fmt, ...)
-    __attribute__((format(printf, 5, 6)));
+    __attribute__((format(gnu_printf, 5, 6)));
 /* A job refused for an input above --max-input: a 400 with the numbers
    (input_tokens, max_input_tokens, excess_tokens and the parts) as fields
    of the error, for a client to shorten the input by. */

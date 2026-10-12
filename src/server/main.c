@@ -8,6 +8,8 @@
 #include "server.h"
 
 #include "common/env_names.h"
+#include "common/sock.h"
+#include "common/stop.h"
 #include "common/words.h"
 
 #include <netdb.h>
@@ -326,6 +328,7 @@ int main(int argc, char **argv)
                              .ai_socktype = SOCK_STREAM,
                              .ai_flags = AI_PASSIVE | AI_NUMERICSERV},
                     *ai = NULL;
+    janas_sock_init();
     int gai = getaddrinfo(c->host, port, &hints, &ai);
     if (gai != 0) {
         fprintf(stderr, "janas-server: %s: %s\n", c->host, gai_strerror(gai));
@@ -340,13 +343,8 @@ int main(int argc, char **argv)
                 "Set one with --api-key.\n",
                 c->host);
 
-    /* the signals that stop it, blocked in every thread and awaited here */
-    sigset_t stop;
-    sigemptyset(&stop);
-    sigaddset(&stop, SIGINT);
-    sigaddset(&stop, SIGTERM);
-    pthread_sigmask(SIG_BLOCK, &stop, NULL);
-    signal(SIGPIPE, SIG_IGN);
+    /* the requests to stop, held back from every thread and awaited here */
+    janas_stop_prepare();
 
     /* the store too: a directory another server holds should not wait
        for the model either */
@@ -400,8 +398,7 @@ int main(int argc, char **argv)
                 strchr(c->host, ':') ? "[" : "",
                 strcmp(c->host, "0.0.0.0") ? c->host : "127.0.0.1",
                 strchr(c->host, ':') ? "]" : "", (unsigned)c->port);
-    int sig;
-    sigwait(&stop, &sig);
+    janas_stop_wait();
     fprintf(stderr, "janas-server: stopping\n");
     srv_http_stop(&s);
     srv_engine_stop(s.engine);

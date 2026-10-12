@@ -1101,10 +1101,9 @@ struct janas_llm_model *janas_llm_model_load(const char *path,
     /* the caller pinned for the time the model lives, and given its CPUs
        back when it goes: a model opened after another in the same process
        (the chat measuring, a reload) would otherwise see one CPU */
-    _Static_assert(sizeof(cpu_set_t) <= sizeof(m->caller_cpus), "cpu set");
+    _Static_assert(JANAS_CPU_SAVE_BYTES <= sizeof(m->caller_cpus), "cpu set");
     if (pin >= 0) {
-        m->caller_pinned = sched_getaffinity(0, sizeof(cpu_set_t),
-                                             (cpu_set_t *)m->caller_cpus) == 0;
+        m->caller_pinned = janas_cpus_save(m->caller_cpus) == 0;
         janas_pin_current_thread(pin);
     }
     m->cache = janas_expert_cache_create(&m->j, o->cache_bytes, m->exp_level,
@@ -1226,7 +1225,7 @@ void janas_llm_model_free(struct janas_llm_model *m)
     if (!m)
         return;
     if (m->caller_pinned)
-        sched_setaffinity(0, sizeof(cpu_set_t), (cpu_set_t *)m->caller_cpus);
+        janas_cpus_restore(m->caller_cpus);
     if (m->tune_key[0])
         janas_tuner_save(&m->tuner, m->tune_key);
     if (m->use_count) {

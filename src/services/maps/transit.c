@@ -13,6 +13,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "services/common/tz.h"
 #include "services/common/geo.h"
 #include "maps.h"
 
@@ -41,12 +42,8 @@ static time_t local_time(const char *s, const char *tz)
         return -1;
     if (h < 0 || h > 23 || mi < 0 || mi > 59)
         return -1;
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    if (tz && *tz)
-        setenv("TZ", tz, 1);
-    tzset();
     time_t now = time(NULL);
-    localtime_r(&now, &tm);
+    janas_tz_local(tz, now, &tm, NULL, 0);
     if (whole) {
         tm.tm_year = y - 1900;
         tm.tm_mon = mo - 1;
@@ -56,20 +53,12 @@ static time_t local_time(const char *s, const char *tz)
     tm.tm_min = mi;
     tm.tm_sec = 0;
     tm.tm_isdst = -1;
-    time_t t = mktime(&tm);
+    time_t t = janas_tz_mktime(tz, &tm);
     if (!whole && t != -1 && t < now - 600) {
         tm.tm_mday++;
         tm.tm_isdst = -1;
-        t = mktime(&tm);
+        t = janas_tz_mktime(tz, &tm);
     }
-    if (tz && *tz) {
-        if (old)
-            setenv("TZ", old, 1);
-        else
-            unsetenv("TZ");
-        tzset();
-    }
-    free(old);
     return t;
 }
 

@@ -5,6 +5,7 @@
  */
 #define _GNU_SOURCE /* strcasestr, getaddrinfo */
 #include "common/mcp_http.h"
+#include "common/sock.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -321,7 +322,7 @@ static long io_read(struct janas_http *h, char *p, size_t n)
 {
     if (h->tls)
         return janas_tls_read(h->tls, p, n);
-    long r = read(h->fd, p, n);
+    long r = janas_sock_recv(h->fd, p, n);
     return r < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) ? -2 : r;
 }
 
@@ -330,7 +331,7 @@ static int send_all(struct janas_http *h, const char *p, size_t n, double end,
 {
     while (n > 0) {
         long w = h->tls ? janas_tls_write(h->tls, p, n)
-                        : send(h->fd, p, n, MSG_NOSIGNAL);
+                        : janas_sock_send(h->fd, p, n);
         if (w > 0) {
             p += w;
             n -= (size_t)w;
@@ -351,6 +352,7 @@ static int connect_to(const struct janas_url *u, double end,
     struct addrinfo hints = {.ai_family = AF_UNSPEC,
                              .ai_socktype = SOCK_STREAM},
                     *res = NULL;
+    janas_sock_init();
     int e = getaddrinfo(u->host, u->port, &hints, &res);
     if (e != 0) {
         snprintf(err, err_len, "%s: %s", u->host, gai_strerror(e));
@@ -358,21 +360,21 @@ static int connect_to(const struct janas_url *u, double end,
     }
     int fd = -1;
     for (struct addrinfo *a = res; a && fd < 0; a = a->ai_next) {
-        fd = socket(a->ai_family, a->ai_socktype | SOCK_CLOEXEC | SOCK_NONBLOCK,
-                    a->ai_protocol);
+        fd = janas_sock_open(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0)
             continue;
         if (connect(fd, a->ai_addr, a->ai_addrlen) == 0)
             break;
-        int ok = errno == EINPROGRESS && wait_fd(fd, POLLOUT, end, cancel) > 0;
+        int ok =
+            janas_sock_connecting() && wait_fd(fd, POLLOUT, end, cancel) > 0;
         int so = 0;
         socklen_t sl = sizeof(so);
-        if (ok && getsockopt(fd, SOL_SOCKET, SO_ERROR, &so, &sl) == 0 &&
+        if (ok && getsockopt(fd, SOL_SOCKET, SO_ERROR, (void *)&so, &sl) == 0 &&
             so == 0)
             break;
         snprintf(err, err_len, "%s:%s: %s", u->host, u->port,
                  ok ? strerror(so) : "cannot connect in time");
-        close(fd);
+        janas_sock_close(fd);
         fd = -1;
     }
     freeaddrinfo(res);
@@ -533,7 +535,7 @@ void janas_http_close(struct janas_http *h)
         janas_tls_close(h->tls);
     h->tls = NULL;
     if (h->fd >= 0)
-        close(h->fd);
+        janas_sock_close(h->fd);
     h->fd = -1;
     free(h->buf);
     h->buf = NULL;

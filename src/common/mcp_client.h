@@ -91,7 +91,7 @@ void janas_mcp_http_end(struct janas_mcp *m);
 
 /* Records the failure for janas_mcp_last_error; returns code. */
 int32_t janas_mcp_fail(int32_t code, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+    __attribute__((format(gnu_printf, 2, 3)));
 
 /* mcp_content.c: the tools of a tools/list page added to m (0, or -1 on
    memory); the content of a tools/call result as text into m->result,

@@ -8,18 +8,17 @@
 #define _GNU_SOURCE
 #include "steps.h"
 
-#include <spawn.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
 #include "common/hf_fetch.h"
 #include "common/sha256.h"
-
-extern char **environ;
+#include "common/proc.h"
+#include "common/sysinfo.h"
 
 void get_local(char *out, size_t len, const char *dir, const char *path)
 {
@@ -110,21 +109,33 @@ int get_fetch(const char *repo, const char *path, const char *dir,
 int get_run(const char *tool, char *const argv[])
 {
     char self[4096], path[4200];
-    ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
-    if (n <= 0)
+    if (janas_exe_path(self, sizeof self) < 0)
         return -1;
-    self[n] = 0;
     char *slash = strrchr(self, '/');
     if (slash)
         *slash = 0;
     snprintf(path, sizeof(path), "%s/%s", self, tool);
-    pid_t pid;
-    if (posix_spawn(&pid, path, NULL, NULL, argv, environ) != 0) {
+    /* the program by its path, the rest of the line as the caller has it */
+    size_t n = 0;
+    while (argv[n])
+        n++;
+    const char **args = calloc(n + 1, sizeof *args);
+    if (!args)
+        return -1;
+    args[0] = path;
+    for (size_t i = 1; i < n; i++)
+        args[i] = argv[i];
+    struct janas_proc pr;
+    char err[256];
+    int rc =
+        janas_proc_start(&pr, args, NULL, NULL, -1, -1, -1, 0, err, sizeof err);
+    free(args);
+    if (rc != 0) {
         fprintf(stderr, "janas-get: cannot run %s\n", path);
         return -1;
     }
-    int st;
-    if (waitpid(pid, &st, 0) != pid)
+    int code = -1;
+    if (janas_proc_wait(&pr, -1, &code) != 1)
         return -1;
-    return WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+    return code;
 }

@@ -4,7 +4,7 @@ Janas-LLM runs large mixture-of-experts language models on ordinary computers: t
 
 ## Requirements
 
-- **Linux on x86-64.** Windows is not supported yet.
+- **Linux on x86-64**, or **Windows 10 (1903 or later) and 11 on x86-64**: the binary package of each release, or a build made on Linux with MinGW-w64 (below).
 - **CPU:** any x86-64 runs it; AVX2 with FMA and F16C (Intel since 2013, AMD since 2015) is needed for good speed, and AVX-VNNI is used when present.
 - **Memory:** at least 16 GB; 32 GB or more for large models (Qwen3-Next-80B-A3B: about 2 GB of resident weights, plus as much expert cache as the memory allows).
 - **Disk:** the model on an **NVMe SSD** (the experts are read directly from it while generating).
@@ -31,6 +31,18 @@ Then, in the source directory:
 ```
 
 Everything goes to `bin/x86_64-linux/`: `janas-chat`, `janas-server`, `janas-mcp`, `janas-bench`, the libraries `libjanas_llm.so` (C API in `include/janas/llm.h`) and `libjanas_mcp.so` (the MCP client, `include/janas/mcp.h`) and the conversion tools. Without `glslangValidator` the build still succeeds, without GPU support. `./build.sh release test` also runs the tests, and `./build.sh --help` lists the other variants — a debug build, and the three sanitizers `asan`, `ubsan` and `tsan` — with what each one catches.
+
+
+### For Windows
+
+On Linux, with MinGW-w64 (`sudo apt install gcc-mingw-w64-x86-64` on Debian or Ubuntu), the same sources build for Windows x86-64:
+
+```sh
+JANAS_OS=windows ./build.sh             # into bin/x86_64-windows/: .exe, the two .dll
+JANAS_OS=windows ./build.sh release test   # the tests, under Wine
+```
+
+The GPU's support comes in when `glslangValidator` and the Vulkan headers are there, as for Linux. The programs need nothing but Windows's own DLLs. On Windows what Janas keeps goes to `%LOCALAPPDATA%\janas` (the models, what it learns about the machine) and `%APPDATA%\janas` (the settings, the MCP servers).
 
 ## Preparing a model
 

@@ -16,6 +16,7 @@
 #include "services/common/geo.h"
 #include "services/common/https_get.h"
 #include "services/common/locate.h"
+#include "services/common/tz.h"
 
 #define DEG(x) ((x) * 1e-5)
 #define KEEP_S 3600 /* a connection seldom moves within the hour */
@@ -150,21 +151,13 @@ static int from_net(const char *url, const char *who,
     return r;
 }
 
-/* the city of the machine's zone: TZ, or where /etc/localtime points */
+/* the city of the machine's zone: TZ, or where /etc/localtime points
+   (Windows: the zone the system is set to, as ICU names it) */
 static int from_zone(struct janas_where *w)
 {
-    char path[256] = "";
-    const char *tz = getenv("TZ");
-    if (tz && *tz) {
-        copy(path, sizeof path, tz[0] == ':' ? tz + 1 : tz);
-    } else {
-        ssize_t n = readlink("/etc/localtime", path, sizeof path - 1);
-        if (n <= 0)
-            return -1;
-        path[n] = 0;
-    }
-    const char *z = strstr(path, "zoneinfo/");
-    z = z ? z + 9 : path; /* "Europe/Rome" */
+    char z[sizeof w->tz];
+    if (janas_tz_machine(z, sizeof z) != 0)
+        return -1;
     const char *slash = strrchr(z, '/');
     if (!slash) /* "UTC", "CET": no city */
         return -1;

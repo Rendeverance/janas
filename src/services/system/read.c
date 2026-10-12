@@ -265,11 +265,18 @@ void sy_err_add(struct sy_errors *e, long long at, const char *who,
     sy_put(x->text, sizeof x->text, t);
 }
 
+/* The latest first; in the same second the one seen more often, then by
+   name and words: an order qsort cannot leave to chance (it is not
+   stable, and two C libraries leave equal ones in different orders). */
 static int later_first(const void *a, const void *b)
 {
-    long long x = ((const struct sy_err *)a)->at,
-              y = ((const struct sy_err *)b)->at;
-    return x < y ? 1 : x > y ? -1 : 0;
+    const struct sy_err *p = a, *q = b;
+    if (p->at != q->at)
+        return p->at < q->at ? 1 : -1;
+    if (p->count != q->count)
+        return p->count < q->count ? 1 : -1;
+    int c = strcmp(p->who, q->who);
+    return c ? c : strcmp(p->text, q->text);
 }
 
 void sy_err_order(struct sy_errors *e)

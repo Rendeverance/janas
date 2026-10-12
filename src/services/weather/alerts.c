@@ -21,6 +21,7 @@
 #include <time.h>
 
 #include "weather.h"
+#include "services/common/tz.h"
 
 #define KEEP_ALARM 900   /* MeteoAlarm's feed */
 #define KEEP_LATEST 1800 /* which bulletin is the latest */
@@ -472,30 +473,24 @@ int wx_dpc(const struct wx_place *p, struct wx_dpc *d, char *err,
     char bday[11];
     snprintf(bday, sizeof bday, "%.4s-%.2s-%.2s", d->issued, d->issued + 4,
              d->issued + 6);
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    setenv("TZ", "Europe/Rome", 1);
-    tzset();
+    static const char *const IT = "Europe/Rome";
     time_t now = time(NULL), tom_t = now + 24 * 3600;
     char today[11], tomorrow[11];
     struct tm lt;
-    strftime(today, sizeof today, "%Y-%m-%d", localtime_r(&now, &lt));
-    strftime(tomorrow, sizeof tomorrow, "%Y-%m-%d", localtime_r(&tom_t, &lt));
+    janas_tz_local(IT, now, &lt, NULL, 0);
+    strftime(today, sizeof today, "%Y-%m-%d", &lt);
+    janas_tz_local(IT, tom_t, &lt, NULL, 0);
+    strftime(tomorrow, sizeof tomorrow, "%Y-%m-%d", &lt);
     struct tm bt = {0};
     sscanf(bday, "%d-%d-%d", &bt.tm_year, &bt.tm_mon, &bt.tm_mday);
     bt.tm_year -= 1900;
     bt.tm_mon -= 1;
     bt.tm_hour = 12;
     bt.tm_isdst = -1;
-    time_t bnext_t = mktime(&bt) + 24 * 3600;
+    time_t bnext_t = janas_tz_mktime(IT, &bt) + 24 * 3600;
     char bnext[11];
-    strftime(bnext, sizeof bnext, "%Y-%m-%d", localtime_r(&bnext_t, &lt));
-    if (old) {
-        setenv("TZ", old, 1);
-        free(old);
-    } else {
-        unsetenv("TZ");
-    }
-    tzset();
+    janas_tz_local(IT, bnext_t, &lt, NULL, 0);
+    strftime(bnext, sizeof bnext, "%Y-%m-%d", &lt);
     /* the bulletin's today and tomorrow, as far as they are still ahead:
        yesterday's bulletin's tomorrow is today */
     static const char *const which[2] = {"today", "tomorrow"};

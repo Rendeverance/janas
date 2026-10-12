@@ -21,6 +21,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "services/common/tz.h"
 #include "services/common/locate.h"
 #include "common/mcp_server.h"
 #include "flights.h"
@@ -117,19 +118,9 @@ static void thousands(struct janas_buf *b, double v)
 /* The time t as HH:MM in the zone tz (an IANA name). */
 static void hhmm(time_t t, const char *tz, char *out, size_t n)
 {
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    setenv("TZ", tz, 1);
-    tzset();
     struct tm tm;
-    localtime_r(&t, &tm);
+    janas_tz_local(tz, t, &tm, NULL, 0);
     strftime(out, n, "%H:%M", &tm);
-    if (old) {
-        setenv("TZ", old, 1);
-        free(old);
-    } else {
-        unsetenv("TZ");
-    }
-    tzset();
 }
 
 /* The time t as "HH:MM local time (HH:MM UTC)", with the day when it is
@@ -140,22 +131,12 @@ static void when_text(struct janas_buf *b, time_t t, const char *tz)
     hhmm(t, tz, loc, sizeof loc);
     hhmm(t, "UTC", utc, sizeof utc);
     janas_buf_printf(b, "%s local time (%s UTC)", loc, utc);
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    setenv("TZ", tz, 1);
-    tzset();
     struct tm tm;
     time_t now = time(NULL);
-    localtime_r(&now, &tm);
+    janas_tz_local(tz, now, &tm, NULL, 0);
     strftime(today, sizeof today, "%d %b", &tm);
-    localtime_r(&t, &tm);
+    janas_tz_local(tz, t, &tm, NULL, 0);
     strftime(day, sizeof day, "%d %b", &tm);
-    if (old) {
-        setenv("TZ", old, 1);
-        free(old);
-    } else {
-        unsetenv("TZ");
-    }
-    tzset();
     if (strcmp(day, today) != 0)
         janas_buf_printf(b, " on %s", day);
 }

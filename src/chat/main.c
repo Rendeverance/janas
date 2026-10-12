@@ -67,6 +67,12 @@ static void on_sigwinch(int sig)
     resized = 1;
 }
 
+/* Windows has no SIGWINCH: the console tells (tty.c) */
+static void on_resize(void)
+{
+    on_sigwinch(0);
+}
+
 /*
  * The footer is made of parts, and a part that does not fit is left out
  * rather than cut off at the edge. A big font is a narrow window, and the
@@ -230,6 +236,9 @@ static int footer_idle(void)
 static void on_sigint(int sig)
 {
     (void)sig;
+#ifdef _WIN32
+    signal(SIGINT, on_sigint); /* its C runtime takes the handler back */
+#endif
     interrupted = 1;
     mcpc_cancel(); /* a tool running stops too */
 }
@@ -569,7 +578,7 @@ static int32_t set_system(janas_llm_chat *c, const char *system)
 /* What the reading ahead says, where the user sees it: in the
    conversation, or on stderr when the output is a pipe. */
 static void prep_say(const char *colour, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+    __attribute__((format(gnu_printf, 2, 3)));
 static void prep_say(const char *colour, const char *fmt, ...)
 {
     char text[512];
@@ -1055,8 +1064,8 @@ static int ask_yes(const char *question)
         return 1;
     term_printf(&term, "%s [y/N] ", question);
     term_raw(&term, 1);
-    char k = 0;
-    if (read(STDIN_FILENO, &k, 1) < 0)
+    unsigned char k = 0;
+    if (tty_byte(&k) < 0)
         k = 0;
     term_raw(&term, 0);
     int yes = k == 'y' || k == 'Y';
@@ -1250,8 +1259,8 @@ static int ask_key(const char *question)
 {
     term_printf(&term, "%s ", question);
     term_raw(&term, 1);
-    char k = 0;
-    if (read(STDIN_FILENO, &k, 1) < 0)
+    unsigned char k = 0;
+    if (tty_byte(&k) < 0)
         k = 0;
     term_raw(&term, 0);
     if (k >= 'A' && k <= 'Z')
@@ -1666,6 +1675,7 @@ int main(int argc, char **argv)
         return 2;
     }
 
+    tty_setup();
     term_init(&term);
     if (!term.tty)
         markdown = 0; /* a pipe gets the marks: a script may want them */
@@ -1826,12 +1836,18 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s\n/help for the commands\n", desc);
     prep_start(c);
 
+#ifdef _WIN32
+    signal(SIGINT, on_sigint);
+    tty_on_resize = on_resize;
+#else
     struct sigaction sa = {.sa_handler = on_sigint};
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, NULL); /* no SA_RESTART: getline returns */
     struct sigaction sw = {.sa_handler = on_sigwinch};
     sigemptyset(&sw.sa_mask); /* no SA_RESTART: the editor redraws itself */
     sigaction(SIGWINCH, &sw, NULL);
+    (void)on_resize;
+#endif
 
     char *msg = NULL;
     size_t cap = 0;

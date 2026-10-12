@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "common/mcp_rpc.h"
+#include "common/sock.h"
 
 enum { MODERN = 1, LEGACY = 2 };
 static int eras = MODERN;
@@ -254,6 +255,20 @@ static void header(const char *head, const char *name, char *v, size_t cap)
     }
 }
 
+/* Every byte to the connection, or -1 (a socket is not a file on
+   Windows: send, not write). */
+static long put_all(int fd, const char *p, size_t n)
+{
+    while (n > 0) {
+        long w = janas_sock_send(fd, p, n);
+        if (w <= 0)
+            return -1;
+        p += w;
+        n -= (size_t)w;
+    }
+    return 0;
+}
+
 static void reply(int fd, int status, const char *type, const char *extra,
                   const char *body, size_t n)
 {
@@ -262,7 +277,7 @@ static void reply(int fd, int status, const char *type, const char *extra,
                      "HTTP/1.1 %d X\r\nContent-Type: %s\r\n%sContent-Length: "
                      "%zu\r\nConnection: close\r\n\r\n",
                      status, type, extra, n);
-    if (write(fd, head, (size_t)k) < 0 || write(fd, body, n) < 0)
+    if (put_all(fd, head, (size_t)k) < 0 || put_all(fd, body, n) < 0)
         fprintf(stderr, "write failed\n");
 }
 
@@ -288,14 +303,15 @@ static void reply_sse(int fd, const char *body, size_t n)
         l += ln + 1;
     }
     janas_buf_puts(&b, "0\r\n\r\n");
-    if (write(fd, b.p, b.n) < 0)
+    if (put_all(fd, b.p, b.n) < 0)
         fprintf(stderr, "write failed\n");
     janas_buf_free(&b);
 }
 
 static void serve_http(void)
 {
-    int s = socket(AF_INET, SOCK_STREAM, 0);
+    janas_sock_init();
+    int s = (int)socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in a = {.sin_family = AF_INET,
                             .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
     socklen_t al = sizeof(a);
@@ -320,14 +336,14 @@ static void serve_http(void)
         }
         if (!(pf[0].revents & POLLIN))
             continue;
-        int fd = accept(s, NULL, NULL);
+        int fd = (int)accept(s, NULL, NULL);
         if (fd < 0)
             continue;
         struct janas_buf in = {0};
         char chunk[4096];
         long got;
         size_t head_end = 0, want = 0;
-        while ((got = read(fd, chunk, sizeof(chunk))) > 0) {
+        while ((got = janas_sock_recv(fd, chunk, sizeof(chunk))) > 0) {
             janas_buf_put(&in, chunk, (size_t)got);
             janas_buf_put(&in, "", 1);
             in.n--;
@@ -342,7 +358,7 @@ static void serve_http(void)
                 break;
         }
         if (!head_end) {
-            close(fd);
+            janas_sock_close(fd);
             janas_buf_free(&in);
             continue;
         }
@@ -403,7 +419,7 @@ static void serve_http(void)
                       strcspn(out, "\n"));
             free(out);
         }
-        close(fd);
+        janas_sock_close(fd);
         janas_buf_free(&in);
     }
 }

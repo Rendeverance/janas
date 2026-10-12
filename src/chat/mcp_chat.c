@@ -15,6 +15,7 @@
 
 #include "layout.h"
 #include "llm/json.h"
+#include "common/sysinfo.h"
 
 /* An answer longer than this is cut: the context is the model's memory of
    the whole conversation, and a file listing can fill it at one go. */
@@ -384,10 +385,8 @@ int mcpc_start_services(void)
     /* in services/ beside the program (the binary package), else beside
        it: bin/x86_64-linux/janas-chat-asan has janas-flights-asan there */
     char self[4096];
-    ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
-    if (n <= 0)
+    if (janas_exe_path(self, sizeof self) < 0)
         return 0;
-    self[n] = 0;
     char *base = strrchr(self, '/');
     if (!base)
         return 0;

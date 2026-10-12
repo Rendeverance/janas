@@ -53,7 +53,7 @@ static int on(void)
 /* One JSON line: the event, its time, and the members (text without the
    braces), written in one piece so lines from several threads never mix. */
 static void emit(const char *event, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+    __attribute__((format(gnu_printf, 2, 3)));
 static void emit(const char *event, const char *fmt, ...)
 {
     if (json_fd < 0)
@@ -61,7 +61,8 @@ static void emit(const char *event, const char *fmt, ...)
     struct timeval tv;
     gettimeofday(&tv, NULL);
     struct tm tm;
-    gmtime_r(&tv.tv_sec, &tm);
+    time_t sec = tv.tv_sec; /* a long on Windows, not a time_t */
+    gmtime_r(&sec, &tm);
     char when[40];
     strftime(when, sizeof(when), "%Y-%m-%dT%H:%M:%S", &tm);
     struct janas_buf b = {0};
@@ -84,7 +85,8 @@ static void emit(const char *event, const char *fmt, ...)
     janas_buf_free(&b);
 }
 
-static void human(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void human(const char *fmt, ...)
+    __attribute__((format(gnu_printf, 1, 2)));
 static void human(const char *fmt, ...)
 {
     if (human_every <= 0)

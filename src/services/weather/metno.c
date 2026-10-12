@@ -16,6 +16,7 @@
 #include <time.h>
 
 #include "weather.h"
+#include "services/common/tz.h"
 
 #define MET_KEEP_S 900
 
@@ -87,16 +88,14 @@ int wx_met_parse(const char *text, size_t n, const char *tz,
     snprintf(f->tz, sizeof f->tz, "%s", tz && *tz ? tz : "UTC");
 
     /* the series is put into the place's zone */
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    setenv("TZ", f->tz, 1);
-    tzset();
     time_t prev_day_t = 0;
     for (const struct janas_json *e = ts->child; e; e = e->next) {
         time_t t = utc_of(janas_json_str(janas_json_get(e, "time")));
         if (t == (time_t)-1)
             continue;
         struct tm lt;
-        localtime_r(&t, &lt);
+        char abbr[16];
+        janas_tz_local(f->tz, t, &lt, abbr, sizeof abbr);
         const struct janas_json *data = janas_json_get(e, "data");
         const struct janas_json *in =
             janas_json_get(janas_json_get(data, "instant"), "details");
@@ -125,7 +124,7 @@ int wx_met_parse(const char *text, size_t n, const char *tz,
             w->code = -1;
             symbol_of(n1 ? n1 : n6, w->symbol, sizeof w->symbol);
             f->has_now = 1;
-            snprintf(f->tz_abbr, sizeof f->tz_abbr, "%s", lt.tm_zone);
+            snprintf(f->tz_abbr, sizeof f->tz_abbr, "%s", abbr);
         }
         if (n1 && f->n_hour < WX_HOURS) {
             struct wx_hour *h = &f->hour[f->n_hour++];
@@ -174,13 +173,6 @@ int wx_met_parse(const char *text, size_t n, const char *tz,
         if (!y->symbol[0] && n12 && lt.tm_hour >= 6)
             symbol_of(n12, y->symbol, sizeof y->symbol);
     }
-    if (old) {
-        setenv("TZ", old, 1);
-        free(old);
-    } else {
-        unsetenv("TZ");
-    }
-    tzset();
     janas_json_free(d);
     return 0;
 }

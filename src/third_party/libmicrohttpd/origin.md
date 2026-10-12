@@ -27,6 +27,11 @@ Linux x86_64 (glibc) with
 --disable-curl --with-threads=posix --disable-shared
 ```
 
+`w32/MHD_config.h`, for Windows builds, is the one the same `configure`
+wrote on 11 October 2026 for `--host=x86_64-w64-mingw32` (MinGW-w64, GCC
+14), with the same options but `--with-threads`, which it chose itself:
+Windows's own threads. It compiles the same 14 sources.
+
 `build.sh` compiles the sources with `-D_GNU_SOURCE -DHAVE_CONFIG_H` and
 without Janas's warning flags: warnings in code that is not Janas's are not
 Janas's to fix here.

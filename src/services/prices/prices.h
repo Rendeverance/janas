@@ -224,7 +224,7 @@ int pr_tools_call(void *ctx, const struct janas_json *params,
 const char *pr_arg_str(const struct janas_json *args, const char *name);
 double pr_arg_num(const struct janas_json *args, const char *name, double def);
 int pr_fail(struct janas_buf *b, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+    __attribute__((format(gnu_printf, 2, 3)));
 int pr_answer(struct janas_buf *b, const char *name, struct janas_buf *d,
               const char *layout, const char *brief);
 int pr_tool_currency(const struct janas_json *args, struct janas_buf *b);

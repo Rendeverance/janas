@@ -68,6 +68,10 @@ Environment
   AR            the archiver, ar by default (gcc-ar for -flto)
   JANAS_CFLAGS  flags added to the variant, to try a compiler out:
                 JANAS_CFLAGS="-O3 -flto" ./build.sh
+  JANAS_OS      windows: the same sources for Windows x86-64, with
+                MinGW-w64 (x86_64-w64-mingw32-gcc), into
+                bin/x86_64-windows/ (.exe, .dll); release and debug only.
+                The tests run under Wine when the build is not on Windows
 
 Before a commit: ./build.sh release test and at least asan; tsan too
 when concurrent code was touched.
@@ -90,10 +94,29 @@ esac
 
 VARIANT="${1:-release}"
 ACTION="${2:-build}"
+JANAS_OS="${JANAS_OS:-}"
+EXE=""
+if [ "$JANAS_OS" = windows ]; then
+    CC="${CC:-x86_64-w64-mingw32-gcc}"
+    AR="${AR:-x86_64-w64-mingw32-ar}"
+    EXE=".exe"
+    case "$VARIANT" in
+    release | debug) ;;
+    *)
+        echo "build.sh: $VARIANT is not available for Windows" \
+            "(release and debug are)" >&2
+        exit 2
+        ;;
+    esac
+elif [ -n "$JANAS_OS" ]; then
+    echo "build.sh: unknown JANAS_OS: $JANAS_OS (windows is known)" >&2
+    exit 2
+fi
 CC="${CC:-gcc}"
 
 CPU="$(uname -m)"
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+[ "$JANAS_OS" = windows ] && OS=windows
 OBJ="lib/$CPU-$OS-$VARIANT"
 BIN="bin/$CPU-$OS"
 SUFFIX=""
@@ -102,8 +125,18 @@ SUFFIX=""
 # _GNU_SOURCE for every file, empty as the files that define it write it:
 # the C library of Ubuntu 22.04 (the binary package's) declares memmem,
 # strcasestr and the like only with it, where a newer one does by default
-CFLAGS=(-std=gnu11 -D_GNU_SOURCE= -Wall -Wextra -Werror -pthread -fPIC -fvisibility=hidden
-    -Isrc -Iinclude)
+CFLAGS=(-std=gnu11 -D_GNU_SOURCE= -Wall -Wextra -Werror -pthread -Isrc -Iinclude)
+if [ "$OS" = windows ]; then
+    # Windows 10 and later; printf with the C99 formats (%zu, %lld); what
+    # MinGW's C library lacks, in one header every file starts with
+    # files over 2 GiB (off_t and st_size of 64 bits); the headers that
+    # stand in for POSIX's (src/common/win/)
+    CFLAGS+=(-D_WIN32_WINNT=0x0A00 -D__USE_MINGW_ANSI_STDIO=1
+        -D_FILE_OFFSET_BITS=64 -Isrc/common/win
+        -include src/common/win_compat.h)
+else
+    CFLAGS+=(-fPIC -fvisibility=hidden)
+fi
 case "$VARIANT" in
 release) CFLAGS+=(-O2 -DNDEBUG) ;;
 debug) CFLAGS+=(-O0 -g) ;;
@@ -131,6 +164,12 @@ build | test | clean | clean-build | clean-test) ;;
     ;;
 esac
 LDLIBS=(-lm)
+# Windows: the system's sockets, random numbers, network interfaces and
+# processes; the C runtime and the threads of MinGW linked in, so that a
+# program needs no DLL beyond Windows's own
+WIN_LIBS=(-lws2_32 -lbcrypt -liphlpapi -lpsapi -lshell32 -lole32 -lwevtapi
+    -lwlanapi -ladvapi32 -lpowrprof -lcrypt32)
+[ "$OS" = windows ] && LDLIBS+=("${WIN_LIBS[@]}")
 # Extra flags, for trying a compiler out: JANAS_CFLAGS="-O3 -flto" ./build.sh.
 # Nothing is added when it is unset, which is how the released build is made.
 # Link-time optimization needs an archiver that reads its objects, hence AR.
@@ -140,6 +179,8 @@ if [ -n "${JANAS_CFLAGS:-}" ]; then
     LDLIBS+=($JANAS_CFLAGS)
 fi
 AR="${AR:-ar}"
+LDSTATIC=()
+[ "$OS" = windows ] && LDSTATIC=(-static)
 # the version in reports (janas-bench)
 VERSION="$(git describe --always --dirty 2>/dev/null || echo unknown)"
 CFLAGS+=(-DJANAS_VERSION="\"$VERSION\"")
@@ -186,9 +227,21 @@ mkdir -p "$OBJ" "$BIN"
 SPV="$OBJ/spv"
 mkdir -p "$SPV"
 GPU_MISSING=""
+VK_INC=()
+if [ "$OS" = windows ] && [ -d /usr/include/vulkan ] &&
+    ! echo '#include <vulkan/vulkan.h>' | "$CC" -E -x c - >/dev/null 2>&1; then
+    # the Vulkan headers are the same for every system: the host's, alone
+    # in a directory of their own (never /usr/include, which is Linux's)
+    mkdir -p "$OBJ/vkinc"
+    for d in vulkan vk_video; do
+        [ -d "/usr/include/$d" ] && ln -sfn "/usr/include/$d" "$OBJ/vkinc/$d"
+    done
+    VK_INC=(-I"$OBJ/vkinc")
+    CFLAGS+=("${VK_INC[@]}")
+fi
 command -v glslangValidator >/dev/null 2>&1 ||
     GPU_MISSING="glslangValidator (glslang-tools, glslang)"
-echo '#include <vulkan/vulkan.h>' | "$CC" -E -x c - >/dev/null 2>&1 ||
+echo '#include <vulkan/vulkan.h>' | "$CC" "${VK_INC[@]}" -E -x c - >/dev/null 2>&1 ||
     GPU_MISSING="${GPU_MISSING:+$GPU_MISSING and }the Vulkan headers (libvulkan-dev, vulkan-headers)"
 [ -z "$GPU_MISSING" ] ||
     echo "note: building without GPU support: $GPU_MISSING not found"
@@ -246,8 +299,15 @@ objname() { echo "$OBJ/$(echo "${1#src/}" | tr '/' '_' | sed 's/\.c$/.o/')"; }
 # the flags it needs and without Janas's warnings, in an archive of their
 # own: they go into the programs that use them, never into libjanas_llm.
 TP_CFLAGS=()
+skip=0
 for f in "${CFLAGS[@]}"; do
-    case "$f" in -Wall | -Wextra | -Werror) ;; *) TP_CFLAGS+=("$f") ;; esac
+    # nor Janas's stand-ins for POSIX on Windows: theirs are their own
+    if [ $skip = 1 ]; then skip=0; continue; fi
+    case "$f" in
+    -Wall | -Wextra | -Werror | -Isrc/common/win) ;;
+    -include) skip=1 ;;
+    *) TP_CFLAGS+=("$f") ;;
+    esac
 done
 TP_CFLAGS+=(-w)
 tp_flags()
@@ -255,6 +315,8 @@ tp_flags()
     local d="src/third_party/$1"
     case "$1" in
     libmicrohttpd)
+        # Windows has a configuration of its own (see its origin.md)
+        [ "$OS" = windows ] && echo "-I$d/w32"
         echo "-D_GNU_SOURCE -DHAVE_CONFIG_H -I$d -I$d/src/include" \
             "-I$d/src/microhttpd" ;;
     mbedtls)
@@ -327,7 +389,8 @@ while IFS= read -r src; do
     # warnings are not Janas's to fix
     [ "$src" = src/common/mcp_tls.c ] && extra=("${MBEDTLS_INC[@]/#-I/-isystem}")
     compile "$src" "$obj" "${CFLAGS[@]}" "${extra[@]}"
-done < <(find src -name '*.c' ! -name main.c ! -path 'src/third_party/*' | sort)
+done < <(find src -name '*.c' ! -name main.c ! -name win_start.c \
+    ! -path 'src/third_party/*' | sort)
 rm -f "$OBJ/libjanas.a"
 "$AR" rcs "$OBJ/libjanas.a" "${objs[@]}"
 if [ "$VARIANT" = release ]; then
@@ -342,29 +405,61 @@ if [ "$VARIANT" = release ]; then
         */common_hf_*.o) ;; # for the tools, with libjanas.a only
         # what the services share (src/services/common/): theirs only
         */services_*.o) ;;
-        # the JSON reader and the strict reading of words: both
-        */llm_json.o | */common_words.o) mcp_objs+=("$o") llm_objs+=("$o") ;;
+        # the JSON reader and the strict reading of words, the sockets and
+        # the programs started, what Windows lacks of POSIX: both
+        */llm_json.o | */common_words.o | */common_sock.o | */common_proc.o | \
+            */common_proc_win.o | */common_win_compat.o | */common_win_posix.o)
+            mcp_objs+=("$o") llm_objs+=("$o") ;;
         *) llm_objs+=("$o") ;;
         esac
     done
-    echo "LD  $BIN/libjanas_llm.so"
-    "$CC" -shared -pthread "${llm_objs[@]}" "${LDLIBS[@]}" \
-        -o "$BIN/libjanas_llm.so"
-    echo "LD  $BIN/libjanas_mcp.so"
-    # with Mbed TLS from the archive of the libraries of others
-    "$CC" -shared -pthread "${mcp_objs[@]}" "$OBJ/libjanas_third.a" \
-        "${LDLIBS[@]}" -o "$BIN/libjanas_mcp.so"
+    if [ "$OS" = windows ]; then
+        # a DLL and its import library (libjanas_llm.dll.a) for MinGW
+        for l in llm mcp; do
+            if [ $l = llm ]; then lo=("${llm_objs[@]}"); else
+                lo=("${mcp_objs[@]}" "$OBJ/libjanas_third.a"); fi
+            echo "LD  $BIN/libjanas_$l.dll"
+            "$CC" -shared -pthread "${LDSTATIC[@]}" "${lo[@]}" "${LDLIBS[@]}" \
+                -Wl,--out-implib,"$BIN/libjanas_$l.dll.a" \
+                -o "$BIN/libjanas_$l.dll"
+        done
+    else
+        # --no-undefined: a function a library needs and does not have is
+        # an error here, not when a program first calls it
+        echo "LD  $BIN/libjanas_llm.so"
+        "$CC" -shared -pthread -Wl,--no-undefined "${llm_objs[@]}" \
+            "${LDLIBS[@]}" -o "$BIN/libjanas_llm.so"
+        echo "LD  $BIN/libjanas_mcp.so"
+        # with Mbed TLS from the archive of the libraries of others
+        "$CC" -shared -pthread -Wl,--no-undefined "${mcp_objs[@]}" \
+            "$OBJ/libjanas_third.a" "${LDLIBS[@]}" -o "$BIN/libjanas_mcp.so"
+    fi
 fi
 THIRD=()
 [ -f "$OBJ/libjanas_third.a" ] && THIRD=("$OBJ/libjanas_third.a")
+# Windows: every program starts with the console made ready for UTF-8 and
+# colours (win_start.c), and carries the manifest that makes UTF-8 its
+# code page (src/common/win/janas.manifest)
+START=()
+if [ "$OS" = windows ]; then
+    compile src/common/win_start.c "$OBJ/win_start.o" "${CFLAGS[@]}"
+    res="$OBJ/janas_res.o"
+    if [ ! -f "$res" ] || [ src/common/win/janas.manifest -nt "$res" ] ||
+        [ src/common/win/janas.rc -nt "$res" ]; then
+        echo "RC  src/common/win/janas.rc"
+        "${WINDRES:-x86_64-w64-mingw32-windres}" -i src/common/win/janas.rc \
+            -I src/common/win -O coff -o "$res"
+    fi
+    START=("$OBJ/win_start.o" "$res")
+fi
 
 # test and benchmark programs, and the C tools
 for src in tests/*.c tools/*.c src/*/main.c src/services/*/main.c; do
-    exe="$BIN/$(basename "${src%.c}")$SUFFIX"
+    exe="$BIN/$(basename "${src%.c}")$SUFFIX$EXE"
     own=()
     if [ "$(basename "$src")" = main.c ]; then
         dir=$(dirname "$src")
-        exe="$BIN/janas-$(basename "$dir")$SUFFIX"
+        exe="$BIN/janas-$(basename "$dir")$SUFFIX$EXE"
         while IFS= read -r c; do
             obj=$(objname "$c")
             own+=("$obj")
@@ -372,17 +467,24 @@ for src in tests/*.c tools/*.c src/*/main.c src/services/*/main.c; do
         done < <(find "$dir" -maxdepth 1 -name '*.c' ! -name main.c | sort)
     fi
     echo "LD  $exe"
-    "$CC" "${CFLAGS[@]}" "${TP_INC[@]}" "$src" "${own[@]}" "$OBJ/libjanas.a" \
-        "${THIRD[@]}" "${LDLIBS[@]}" -o "$exe"
+    "$CC" "${CFLAGS[@]}" "${TP_INC[@]}" "$src" "${own[@]}" "${START[@]}" \
+        "$OBJ/libjanas.a" "${THIRD[@]}" "${LDSTATIC[@]}" "${LDLIBS[@]}" -o "$exe"
 done
 
 if [ "$ACTION" = test ]; then
     status=0
-    for t in "$BIN"/test_*"$SUFFIX"; do
+    # the variables of this script are not the engine's, which warns of
+    # a JANAS_ it does not know; a Windows build made elsewhere runs its
+    # tests under Wine
+    RUN=(env -u JANAS_OS -u JANAS_CFLAGS)
+    if [ "$OS" = windows ] && [ "$(uname -s)" = Linux ]; then
+        RUN+=(WINEDEBUG=-all wine)
+    fi
+    for t in "$BIN"/test_*"$SUFFIX$EXE"; do
         # in release, skip the sanitizer builds (test_x-asan and the like)
-        [ -n "$SUFFIX" ] || [[ "$(basename "$t")" != *-* ]] || continue
+        [ -n "$SUFFIX" ] || [[ "$(basename "$t" "$EXE")" != *-* ]] || continue
         echo "RUN $t"
-        "$t" || status=1
+        "${RUN[@]}" "$t" || status=1
     done
     exit $status
 fi

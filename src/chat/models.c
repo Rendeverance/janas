@@ -6,17 +6,15 @@
 #define _GNU_SOURCE
 #include "models.h"
 
-#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include "janas/llm.h"
-
-extern char **environ;
+#include "common/proc.h"
+#include "common/sysinfo.h"
 
 static int is_file(const char *path)
 {
@@ -93,25 +91,24 @@ static const struct janas_model_entry *nth(int k)
 static int fetch(const struct janas_model_entry *m, const char *dir)
 {
     char self[4096], tool[4200];
-    ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
-    if (n <= 0)
+    if (janas_exe_path(self, sizeof self) < 0)
         return -1;
-    self[n] = 0;
     char *slash = strrchr(self, '/');
     if (!slash)
         return -1;
     *slash = 0;
     snprintf(tool, sizeof(tool), "%s/janas-get", self);
-    char *argv[] = {"janas-get", (char *)m->name, "--dir", (char *)dir, NULL};
-    pid_t pid;
-    if (posix_spawn(&pid, tool, NULL, NULL, argv, environ) != 0) {
+    const char *argv[] = {tool, m->name, "--dir", dir, NULL};
+    struct janas_proc pr;
+    char err[256];
+    if (janas_proc_start(&pr, argv, NULL, NULL, -1, -1, -1, 0, err,
+                         sizeof err) != 0) {
         fprintf(stderr, "janas-chat: cannot start %s\n", tool);
         return -1;
     }
-    int st = 0;
-    while (waitpid(pid, &st, 0) < 0)
-        ;
-    return WIFEXITED(st) && WEXITSTATUS(st) == 0 ? 0 : -1;
+    int code = -1;
+    janas_proc_wait(&pr, -1, &code);
+    return code == 0 ? 0 : -1;
 }
 
 /*

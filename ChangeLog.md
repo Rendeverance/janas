@@ -2,6 +2,13 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-12] - Janas on Windows
+
+- **The same sources build for Windows x86-64**, with MinGW-w64 from Linux (`JANAS_OS=windows ./build.sh`): every program, the two libraries as DLLs, Janas's services (janas-system with Windows's own calls), the GPU through Vulkan; nothing needed but Windows's own DLLs. Run on Windows 11 (build 26300) on the development laptop on 12 October 2026: all 31 tests pass, and with the same files and commands as on Linux it writes as fast (Qwen3-4B 25.6 tok/s against 27, Qwen3-30B-A3B 34.2 against 32) and reads a prompt of 1,024 tokens as fast with the mixture (Qwen3-30B-A3B 132 against 135) and 1.8 times as fast with the dense model (Qwen3-4B 346 against 193), whose whole blocks go to the GPU, there through Intel's own driver.
+- **What differs between the systems has one place each**: the reading of the experts (unbuffered overlapped reads on Windows, io_uring on Linux), the CPU's cores, the programs started (a job object holds what an MCP server starts in turn), sockets, the chat's terminal, time zones (Windows's ICU), the folders (`%LOCALAPPDATA%\janas`, `%APPDATA%\janas`).
+- **The cores on Windows**: the low-power efficiency cores are told from the others by the level-3 cache they do not share; the clocks Windows reports had kept them and left out the eight ordinary efficiency cores.
+- **Fixed on the way, on Linux too**: `libjanas_mcp.so` lacked functions it called, now an error when it is linked (`--no-undefined`); janas-system's list of errors could come in a different order when two came in the same second.
+
 ## [2026-10-11] - A binary package, and the models already converted
 
 - **The documentation in pages, and a wiki.** The README keeps the speeds, the tables and the machine they were measured on; the rest is in `docs/` (what works, getting a model, the chat, the library, serving the model, the tools, your hardware), and the README's old sections point there, so the links already given still work. Each release writes the project's wiki from the same pages, so the two never part.

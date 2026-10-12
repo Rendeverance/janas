@@ -59,7 +59,11 @@ int gh_token_kind(void)
     kind = 0;
     if (take(getenv("GH_TOKEN"), 1) || take(getenv("GITHUB_TOKEN"), 1))
         return kind;
+#ifdef _WIN32
+    FILE *p = popen("gh auth token 2>NUL", "r"); /* through cmd.exe */
+#else
     FILE *p = popen("gh auth token 2>/dev/null", "r");
+#endif
     if (p) {
         char line[512] = "";
         if (!fgets(line, sizeof line, p))

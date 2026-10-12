@@ -1,16 +1,61 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
    Copyright (C) 2026 Maurizio Cammalleri */
 /*
- * sysinfo.c - see sysinfo.h. Linux: sysfs and procfs.
+ * sysinfo.c - see sysinfo.h. The order of the CPUs, for every system; what
+ * Linux tells of them, from sysfs and procfs. Windows: sysinfo_win.c.
  */
 #define _GNU_SOURCE
 #include "sysinfo.h"
+#include "pool.h"
+#include "sysinfo_os.h"
 
-#include <dirent.h>
-#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+int janas_cpu_layout(const int *allowed, int n_allowed,
+                     struct janas_cpu_layout *l)
+{
+    int cand[JANAS_MAX_CPUS], nc = 0;
+    if (allowed) {
+        for (int i = 0; i < n_allowed && nc < JANAS_MAX_CPUS; i++)
+            cand[nc++] = allowed[i];
+    } else {
+        nc = janas_os_allowed_cpus(cand, JANAS_MAX_CPUS);
+    }
+    if (nc <= 0)
+        return -1;
+    /* kind 0 performance, 1 efficiency, 2 low-power efficiency */
+    int kind[JANAS_MAX_CPUS], leader[JANAS_MAX_CPUS];
+    janas_os_cpu_kinds(cand, nc, kind, leader);
+    l->n = l->n_p_cores = l->n_p_threads = 0;
+    /* P leaders, P siblings, E leaders, E siblings */
+    for (int pass = 0; pass < 4; pass++)
+        for (int i = 0; i < nc; i++) {
+            int k = pass < 2 ? 0 : 1, want_leader = pass % 2 == 0;
+            if (kind[i] != k)
+                continue;
+            int first = 1;
+            for (int j = 0; j < i && first; j++)
+                first = !(kind[j] == k && leader[j] == leader[i]);
+            if (first != want_leader)
+                continue;
+            l->cpus[l->n++] = cand[i];
+            if (pass == 0)
+                l->n_p_cores++;
+            if (pass <= 1)
+                l->n_p_threads++;
+        }
+    if (l->n == 0)
+        return -1;
+    return 0;
+}
+
+#ifndef _WIN32
+#include <dirent.h>
+#include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
 
 /* Reads a CPU list ("0-11,14") from a sysfs file. Returns the count. */
 static int read_cpu_list(const char *path, int *out, int max)
@@ -43,15 +88,8 @@ int janas_cpu_split(int *compute, int *n_compute, int *io, int *n_io, int max)
     *n_io = read_cpu_list("/sys/devices/cpu_atom/cpus", io, max < 8 ? max : 8);
     if (*n_compute > 0 && *n_io > 0)
         return 1;
-    cpu_set_t set;
-    CPU_ZERO(&set);
-    if (sched_getaffinity(0, sizeof(set), &set) != 0)
-        return -1;
-    *n_compute = 0;
-    for (int c = 0; c < CPU_SETSIZE && *n_compute < max; c++)
-        if (CPU_ISSET(c, &set))
-            compute[(*n_compute)++] = c;
-    if (*n_compute == 0)
+    *n_compute = janas_os_allowed_cpus(compute, max);
+    if (*n_compute <= 0)
         return -1;
     *n_io = *n_compute < 8 ? *n_compute : 8;
     return 0;
@@ -95,31 +133,27 @@ static int in_list(const int *list, int n, int cpu)
     return 0;
 }
 
-int janas_cpu_layout(const int *allowed, int n_allowed,
-                     struct janas_cpu_layout *l)
+int janas_os_allowed_cpus(int *out, int max)
 {
-    int cand[JANAS_MAX_CPUS], nc = 0;
-    if (allowed) {
-        for (int i = 0; i < n_allowed && nc < JANAS_MAX_CPUS; i++)
-            cand[nc++] = allowed[i];
-    } else {
-        cpu_set_t set;
-        CPU_ZERO(&set);
-        if (sched_getaffinity(0, sizeof(set), &set) != 0)
-            return -1;
-        for (int c = 0; c < CPU_SETSIZE && nc < JANAS_MAX_CPUS; c++)
-            if (CPU_ISSET(c, &set))
-                cand[nc++] = c;
-    }
-    if (nc == 0)
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof(set), &set) != 0)
         return -1;
+    int n = 0;
+    for (int c = 0; c < CPU_SETSIZE && n < max; c++)
+        if (CPU_ISSET(c, &set))
+            out[n++] = c;
+    return n;
+}
+
+void janas_os_cpu_kinds(const int *cand, int nc, int *kind, int *leader)
+{
     /* hybrid processors list their core types */
     int pcores[JANAS_MAX_CPUS], ecores[JANAS_MAX_CPUS];
     int np =
         read_cpu_list("/sys/devices/cpu_core/cpus", pcores, JANAS_MAX_CPUS);
     int ne =
         read_cpu_list("/sys/devices/cpu_atom/cpus", ecores, JANAS_MAX_CPUS);
-    int kind[JANAS_MAX_CPUS], leader[JANAS_MAX_CPUS]; /* kind 0 P, 1 E, 2 LP */
     long efreq_max = 0, freq[JANAS_MAX_CPUS];
     for (int i = 0; i < nc; i++) {
         char path[128];
@@ -142,27 +176,37 @@ int janas_cpu_layout(const int *allowed, int n_allowed,
     for (int i = 0; i < nc; i++)
         if (kind[i] == 1 && freq[i] > 0 && freq[i] < efreq_max * 85 / 100)
             kind[i] = 2;
-    l->n = l->n_p_cores = l->n_p_threads = 0;
-    /* P leaders, P siblings, E leaders, E siblings */
-    for (int pass = 0; pass < 4; pass++)
-        for (int i = 0; i < nc; i++) {
-            int k = pass < 2 ? 0 : 1, want_leader = pass % 2 == 0;
-            if (kind[i] != k)
-                continue;
-            int first = 1;
-            for (int j = 0; j < i && first; j++)
-                first = !(kind[j] == k && leader[j] == leader[i]);
-            if (first != want_leader)
-                continue;
-            l->cpus[l->n++] = cand[i];
-            if (pass == 0)
-                l->n_p_cores++;
-            if (pass <= 1)
-                l->n_p_threads++;
-        }
-    if (l->n == 0)
+}
+
+int janas_cpus_save(unsigned char save[JANAS_CPU_SAVE_BYTES])
+{
+    _Static_assert(sizeof(cpu_set_t) <= JANAS_CPU_SAVE_BYTES, "cpu set");
+    return sched_getaffinity(0, sizeof(cpu_set_t), (cpu_set_t *)save) == 0 ? 0
+                                                                           : -1;
+}
+
+void janas_cpus_restore(const unsigned char save[JANAS_CPU_SAVE_BYTES])
+{
+    sched_setaffinity(0, sizeof(cpu_set_t), (const cpu_set_t *)save);
+}
+
+int janas_pin_current_thread(int cpu)
+{
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    CPU_SET(cpu, &set);
+    return pthread_setaffinity_np(pthread_self(), sizeof(set), &set) ? -1 : 0;
+}
+
+int janas_exe_path(char *buf, size_t len)
+{
+    if (len == 0)
         return -1;
-    return 0;
+    ssize_t n = readlink("/proc/self/exe", buf, len - 1);
+    if (n <= 0)
+        return -1;
+    buf[n] = 0;
+    return (int)n;
 }
 
 void janas_cpu_name(char *buf, size_t len)
@@ -243,3 +287,5 @@ uint64_t janas_mem_total(void)
 {
     return meminfo("MemTotal");
 }
+
+#endif /* !_WIN32 */

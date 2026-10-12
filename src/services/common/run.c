@@ -4,18 +4,16 @@
  * run.c - a program run by a service (see run.h): no shell, no terminal,
  * a time limit for it and what it started.
  */
-#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
+#include "common/proc.h"
 #include "run.h"
 
 static double now_ms(void)
@@ -32,38 +30,38 @@ int janas_run(const char *dir, const char *const *argv, const char *const *env,
     const char *name = strrchr(argv[0], '/');
     name = name ? name + 1 : argv[0];
     int po[2], pe[2];
-    if (pipe2(po, O_CLOEXEC) != 0) {
+    if (janas_pipe(po) != 0) {
         snprintf(why, why_len, "no pipe: %s", strerror(errno));
         return -1;
     }
-    if (pipe2(pe, O_CLOEXEC) != 0) {
+    if (janas_pipe(pe) != 0) {
         close(po[0]);
         close(po[1]);
         snprintf(why, why_len, "no pipe: %s", strerror(errno));
         return -1;
     }
-    pid_t pid = fork();
-    if (pid < 0) {
-        snprintf(why, why_len, "cannot start %s: %s", name, strerror(errno));
-        close(po[0]), close(po[1]), close(pe[0]), close(pe[1]);
-        return -1;
-    }
-    if (pid == 0) {
-        setsid(); /* no terminal: nothing can be asked of the user */
-        int nul = open("/dev/null", O_RDONLY);
-        if (nul >= 0)
-            dup2(nul, 0);
-        dup2(po[1], 1);
-        dup2(pe[1], 2);
-        if (dir && chdir(dir) != 0)
-            _exit(126);
-        for (size_t i = 0; env && env[i]; i++)
-            putenv((char *)env[i]);
-        execvp(argv[0], (char *const *)argv);
-        _exit(127);
-    }
+    /* no terminal: nothing can be asked of the user */
+    struct janas_proc pr;
+    char e[256];
+    int nul = janas_null_fd(0);
+    int started = janas_proc_start(&pr, argv, env, dir, nul, po[1], pe[1],
+                                   JANAS_PROC_DETACHED, e, sizeof e);
+    int start_errno = errno;
+    if (nul >= 0)
+        close(nul);
     close(po[1]);
     close(pe[1]);
+    if (started != 0) {
+        close(po[0]);
+        close(pe[0]);
+        if (start_errno == ENOENT)
+            snprintf(why, why_len, "%s is not installed", name);
+        else if (start_errno == ENOTDIR)
+            snprintf(why, why_len, "cannot enter %s", dir);
+        else
+            snprintf(why, why_len, "%s", e);
+        return -1;
+    }
     struct pollfd fd[2] = {{.fd = po[0], .events = POLLIN},
                            {.fd = pe[0], .events = POLLIN}};
     struct janas_buf *to[2] = {out, err};
@@ -98,10 +96,9 @@ int janas_run(const char *dir, const char *const *argv, const char *const *env,
         if (fd[i].fd >= 0)
             close(fd[i].fd);
     if (late)
-        kill(-pid, SIGKILL); /* it and what it started */
-    int st = 0;
-    while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
-        ;
+        janas_proc_kill(&pr, 1); /* it and what it started */
+    int code = -1;
+    janas_proc_wait(&pr, -1, &code);
     janas_buf_put(out, "", 1);
     out->n--;
     janas_buf_put(err, "", 1);
@@ -111,17 +108,9 @@ int janas_run(const char *dir, const char *const *argv, const char *const *env,
                  timeout_ms / 1000);
         return -1;
     }
-    if (!WIFEXITED(st)) {
+    if (code < 0) {
         snprintf(why, why_len, "%s stopped by a signal", name);
         return -1;
     }
-    if (WEXITSTATUS(st) == 127) {
-        snprintf(why, why_len, "%s is not installed", name);
-        return -1;
-    }
-    if (WEXITSTATUS(st) == 126) {
-        snprintf(why, why_len, "cannot enter %s", dir);
-        return -1;
-    }
-    return WEXITSTATUS(st);
+    return code;
 }

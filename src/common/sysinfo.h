@@ -37,6 +37,14 @@ struct janas_cpu_layout {
 int janas_cpu_layout(const int *allowed, int n_allowed,
                      struct janas_cpu_layout *l);
 
+/* The calling thread's CPUs, saved to be given back to it later: a model
+   pins the thread that opens it, for as long as it lives. 0 or -1. */
+#define JANAS_CPU_SAVE_BYTES 128
+int janas_cpus_save(unsigned char save[JANAS_CPU_SAVE_BYTES]);
+void janas_cpus_restore(const unsigned char save[JANAS_CPU_SAVE_BYTES]);
+/* The path of the running program, with / between its parts on every
+   system. Its length, or -1. */
+int janas_exe_path(char *buf, size_t len);
 /* The processor's name ("Intel(R) Core(TM) Ultra 9 185H"), or "". */
 void janas_cpu_name(char *buf, size_t len);
 

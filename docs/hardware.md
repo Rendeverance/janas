@@ -42,8 +42,9 @@ The [hardware report form](https://github.com/prabanta-dev/janas/issues/new?temp
 2. **Discrete GPUs** (NVIDIA, AMD, Intel Arc). The GPU support is correct - bit for bit on a reply's tokens, and on a prompt as close to the references as the CPU - and it pays where it was measured: on the development laptop's integrated GPU, with the fast prompt, Qwen3-4B reads a prompt 2.6 times faster than without the GPU (85 to 220 tokens/s; before the fast prompt, 83 to 107), and on an RTX 5080 (issue #15) Qwen3-4B read 13% faster and, with the GPU on single tokens too, replied 11-16% faster. Every other card is unknown, and the fast prompt has not run on a discrete one yet (`JANAS_GPU_FAST_PROMPT=0` turns it off if it misbehaves). **Careful:** a GPU driver reset takes the desktop with it. Start with `janas-bench`, not with a long chat.
 3. **Machines with 16 GB or less.** The engine is supposed to trade quality for memory on its own — fewer bits per weight, light experts not in memory left out — and the thresholds for that were measured on 32 GB.
 4. **Slower disks.** Everything assumes an NVMe SSD; on a SATA disk the engine should still work and simply wait more, but nobody has watched it do so.
-5. **Other models** of the supported families. A file that will not convert, or converts and then answers nonsense, is a useful bug.
+5. **Windows on other machines.** The Windows build has run on one laptop, the development one (Windows 11, build 26300), where its tests pass and it is as fast as on Linux; `janas-bench`'s report from any other is welcome.
+6. **Other models** of the supported families. A file that will not convert, or converts and then answers nonsense, is a useful bug.
 
-**What not to bother with yet:** Windows and macOS (not supported), and models outside the Qwen3, Qwen3.5, Qwen3.6, Qwen3-Next and Gemma 4 families (they are refused with a message).
+**What not to bother with yet:** macOS (not supported), and models outside the Qwen3, Qwen3.5, Qwen3.6, Qwen3-Next and Gemma 4 families (they are refused with a message).
 
 Patches are welcome too, but a measurement from a machine nobody here can buy is worth more than most patches.

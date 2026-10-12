@@ -27,7 +27,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <time.h>
 
 #include "common/mcp_config.h"
@@ -712,9 +711,9 @@ static int ended(struct janas_mcp *m)
 {
     if (m->http)
         return 0; /* each request is a connection of its own */
-    if (m->p.pid <= 0 || m->p.eof)
+    if (!m->p.proc.id || m->p.eof)
         return 1;
-    return waitpid(m->p.pid, NULL, WNOHANG) == m->p.pid ? (m->p.pid = 0, 1) : 0;
+    return janas_proc_wait(&m->p.proc, 0, NULL) == 1;
 }
 
 int32_t janas_mcp_tool_read_only(const janas_mcp *m, const char *name,

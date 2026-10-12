@@ -545,10 +545,14 @@ int main(int argc, char **argv)
     test_rpc();
     test_config();
     /* the fake server is next to this program, with the same suffix */
-    char self[1024];
+    char self[1024], name[1024];
     snprintf(self, sizeof(self), "%s", argv[0]);
-    const char *base = strrchr(argv[0], '/');
-    base = base ? base + 1 : argv[0];
+    for (char *c = self; *c; c++)
+        if (*c == '\\')
+            *c = '/'; /* Windows writes its paths with either */
+    const char *base = strrchr(self, '/');
+    snprintf(name, sizeof name, "%s", base ? base + 1 : self);
+    base = name;
     const char *suffix = strchr(base, '-');
     snprintf(fake, sizeof(fake), "%s/mcp_fake_server%s", dirname(self),
              suffix ? suffix : "");

@@ -14,6 +14,7 @@
 #include <time.h>
 
 #include "flights.h"
+#include "services/common/tz.h"
 #include "services/common/conf.h"
 
 #define BASE "https://api.aviationstack.com/v1/flights?access_key="
@@ -74,17 +75,7 @@ static time_t local_time(const char *iso, const char *tz)
         return 0;
     tm.tm_year -= 1900;
     tm.tm_mon -= 1;
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    setenv("TZ", tz && *tz ? tz : "UTC", 1);
-    tzset();
-    time_t t = mktime(&tm);
-    if (old) {
-        setenv("TZ", old, 1);
-        free(old);
-    } else {
-        unsetenv("TZ");
-    }
-    tzset();
+    time_t t = janas_tz_mktime(tz && *tz ? tz : "UTC", &tm);
     return t == (time_t)-1 ? 0 : t;
 }
 

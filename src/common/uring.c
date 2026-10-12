@@ -26,7 +26,8 @@
 #endif
 #endif
 
-#ifndef JANAS_HAVE_URING
+/* Windows: uring_win.c, with overlapped reads */
+#if !defined(JANAS_HAVE_URING) && !defined(_WIN32)
 
 struct janas_uring *janas_uring_create(unsigned entries)
 {
@@ -64,8 +65,7 @@ unsigned janas_uring_inflight(const struct janas_uring *u)
     return 0;
 }
 
-
-#else
+#elif defined(JANAS_HAVE_URING)
 
 #include <linux/io_uring.h>
 #include <sys/mman.h>
@@ -315,6 +315,5 @@ unsigned janas_uring_inflight(const struct janas_uring *u)
 {
     return u->pending;
 }
-
 
 #endif

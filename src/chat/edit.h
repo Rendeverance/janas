@@ -220,8 +220,7 @@ static int line_read(struct janas_term *t, const char *prompt, char *buf,
     for (;;) {
         unsigned char c;
         if (line_idle) {
-            struct pollfd pf = {STDIN_FILENO, POLLIN, 0};
-            int pr = poll(&pf, 1, 500);
+            int pr = tty_wait(500);
             if (pr < 0 && errno == EINTR) { /* the window changed size */
                 term_size(t);
                 ed_draw(t, prompt, buf, len, pos, ed_command(cmds, buf, len));
@@ -241,7 +240,7 @@ static int line_read(struct janas_term *t, const char *prompt, char *buf,
             }
             /* a key: read() below takes it */
         }
-        ssize_t r = read(STDIN_FILENO, &c, 1);
+        int r = tty_byte(&c);
         if (r < 0 && errno == EINTR) { /* the window changed size */
             term_size(t);
             ed_draw(t, prompt, buf, len, pos, ed_command(cmds, buf, len));
@@ -351,16 +350,15 @@ static int line_read(struct janas_term *t, const char *prompt, char *buf,
              * Home, but Ctrl-Home sends five, and what was left over used
              * to end up typed into the line.
              */
-            struct pollfd pf = {STDIN_FILENO, POLLIN, 0};
             unsigned char lead = 0, final = 0;
             char par[16];
             int pn = 0;
-            if (poll(&pf, 1, 50) <= 0 || read(STDIN_FILENO, &lead, 1) != 1 ||
+            if (tty_wait(50) <= 0 || tty_byte(&lead) != 1 ||
                 (lead != '[' && lead != 'O'))
                 continue;
             for (;;) {
                 unsigned char b;
-                if (read(STDIN_FILENO, &b, 1) != 1)
+                if (tty_byte(&b) != 1)
                     break;
                 if (b >= 0x40 && b <= 0x7e) {
                     final = b;

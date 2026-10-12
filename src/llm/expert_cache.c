@@ -7,6 +7,7 @@
 #define _GNU_SOURCE
 #include "expert_cache.h"
 
+#include "common/reopen.h"
 #include "common/uring.h"
 
 #include <errno.h>
@@ -475,9 +476,7 @@ struct janas_expert_cache *janas_expert_cache_create(const struct janas_jns *j,
     c->n_slots = n_slots;
     c->head = c->tail = NONE;
 
-    char path[64];
-    snprintf(path, sizeof(path), "/proc/self/fd/%d", j->fd);
-    c->fd = open(path, O_RDONLY | O_DIRECT | O_CLOEXEC);
+    c->fd = janas_reopen_read(j->fd, 1);
     size_t arena_bytes = n_slots * slot_bytes + JANAS_ARENA_GUARD;
     c->arena = aligned_alloc(JANAS_JNS_ALIGN, arena_bytes);
     c->where = malloc(n_keys * sizeof(int32_t));
@@ -779,9 +778,7 @@ int janas_expert_cache_rebase(struct janas_expert_cache *c, uint8_t *arena)
     pthread_mutex_unlock(&c->lock);
     /* the new memory takes no O_DIRECT reads (a GPU driver's mapping):
        the file opened again without it, for the loads that may still come */
-    char path[64];
-    snprintf(path, sizeof(path), "/proc/self/fd/%d", c->j->fd);
-    int fd = busy ? -1 : open(path, O_RDONLY | O_CLOEXEC);
+    int fd = busy ? -1 : janas_reopen_read(c->j->fd, 0);
     if (fd < 0) {
         pthread_mutex_unlock(&c->api_lock);
         return -1;

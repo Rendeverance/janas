@@ -14,6 +14,7 @@
 #include <time.h>
 
 #include "services/common/locate.h"
+#include "services/common/tz.h"
 #include "common/mcp_server.h"
 #include "weather.h"
 
@@ -186,29 +187,29 @@ int wx_arg_place(const struct janas_json *args, struct wx_place *p,
     return -1;
 }
 
+/* "Monday 5 October" after lead: the day without a leading zero, which
+   only glibc's strftime writes (%-d) */
+static void day_text(char *out, size_t cap, const char *lead,
+                     const struct tm *t)
+{
+    char wd[16], mon[16];
+    strftime(wd, sizeof wd, "%A", t);
+    strftime(mon, sizeof mon, "%B", t);
+    snprintf(out, cap, "%s%s %d %s", lead, wd, t->tm_mday, mon);
+}
+
 void wx_local_time(time_t t, const char *tz, char *out, size_t cap)
 {
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    if (tz && *tz)
-        setenv("TZ", tz, 1);
-    tzset();
     struct tm lt, nt;
+    char abbr[16];
     time_t now = time(NULL);
-    localtime_r(&t, &lt);
-    localtime_r(&now, &nt);
-    char hm[16], day[32] = "";
+    janas_tz_local(tz, t, &lt, abbr, sizeof abbr);
+    janas_tz_local(tz, now, &nt, NULL, 0);
+    char hm[16], day[48] = "";
     strftime(hm, sizeof hm, "%H:%M", &lt);
     if (lt.tm_yday != nt.tm_yday || lt.tm_year != nt.tm_year)
-        strftime(day, sizeof day, " on %A %-d %B", &lt);
-    snprintf(out, cap, "%s%s %s", hm, day, lt.tm_zone ? lt.tm_zone : "");
-    if (tz && *tz) {
-        if (old)
-            setenv("TZ", old, 1);
-        else
-            unsetenv("TZ");
-        tzset();
-    }
-    free(old);
+        day_text(day, sizeof day, " on ", &lt);
+    snprintf(out, cap, "%s%s %s", hm, day, abbr);
 }
 
 void wx_day_name(const char *date, char *out, size_t cap)
@@ -224,7 +225,7 @@ void wx_day_name(const char *date, char *out, size_t cap)
     time_t t = timegm(&tm);
     struct tm g;
     gmtime_r(&t, &g);
-    strftime(out, cap, "%A %-d %B", &g);
+    day_text(out, cap, "", &g);
 }
 
 void wx_place_name(const struct wx_place *p, char *out, size_t cap)

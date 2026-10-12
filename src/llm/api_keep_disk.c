@@ -25,6 +25,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#ifdef _WIN32
+#include <sys/utime.h>
+#endif
 #include <unistd.h>
 
 #include "llm/jns.h"
@@ -48,7 +51,21 @@ static int path_of(const janas_llm_chat *c, const char *name, char *buf,
 
 static int64_t mtime_ns(const struct stat *st)
 {
+#ifdef _WIN32
+    return (int64_t)st->st_mtime * 1000000000; /* seconds only there */
+#else
     return (int64_t)st->st_mtim.tv_sec * 1000000000 + st->st_mtim.tv_nsec;
+#endif
+}
+
+/* The file's time of change set to now: its turn to go comes last. */
+static int touch(const char *p)
+{
+#ifdef _WIN32
+    return _utime(p, NULL);
+#else
+    return utimensat(AT_FDCWD, p, NULL, 0);
+#endif
 }
 
 static void forget(janas_llm_chat *c, int32_t i, int unlink_it)
@@ -228,7 +245,7 @@ struct janas_llm_saved *janas_api_disk_take(janas_llm_chat *c, int32_t i,
     *prefix = c->disk[i].prefix;
     /* used now: the last to go */
     struct stat st;
-    if (utimensat(AT_FDCWD, p, NULL, 0) == 0 && stat(p, &st) == 0)
+    if (touch(p) == 0 && stat(p, &st) == 0)
         c->disk[i].used = mtime_ns(&st);
     return sv;
 }

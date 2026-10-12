@@ -19,13 +19,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <poll.h>
-#include <sys/ioctl.h>
 #include <stdarg.h>
 #include <stdint.h>
-#include <termios.h>
 #include <wchar.h>
 #include <unistd.h>
+
+#include "tty.h"
 
 struct janas_term {
     int tty;    /* stdin and stdout are both a terminal */
@@ -45,7 +44,6 @@ struct janas_term {
     /* how many times the screen has been cleared: the store's partial
        redraw (scroll.h) trusts what it drew only while this stays put */
     unsigned cleared;
-    struct termios saved;
 };
 
 /* Colours: empty strings when they are not wanted, so every use is one
@@ -252,7 +250,7 @@ static void term_puts(struct janas_term *t, const char *s)
     term_write(t, s, strlen(s));
 }
 
-__attribute__((format(printf, 2, 3))) static void
+__attribute__((format(gnu_printf, 2, 3))) static void
 term_printf(struct janas_term *t, const char *fmt, ...)
 {
     char small[1024], *buf = small;
@@ -286,20 +284,19 @@ static void term_gap(struct janas_term *t)
 
 static void term_size(struct janas_term *t)
 {
-    struct winsize ws;
+    int rows, cols;
     t->rows = 24;
     t->cols = 80;
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 4 &&
-        ws.ws_col > 20) {
-        t->rows = ws.ws_row;
-        t->cols = ws.ws_col;
+    if (tty_size(&rows, &cols) == 0 && rows > 4 && cols > 20) {
+        t->rows = rows;
+        t->cols = cols;
     }
 }
 
 static void term_init(struct janas_term *t)
 {
     memset(t, 0, sizeof(*t));
-    t->tty = isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
+    t->tty = tty_both();
     const char *no = getenv("NO_COLOR"), *term = getenv("TERM");
     t->colour = t->tty && !(no && *no) && !(term && !strcmp(term, "dumb"));
     /* the box the line is written in, and the status line under it */
@@ -312,16 +309,7 @@ static void term_raw(struct janas_term *t, int on)
 {
     if (!t->tty || t->raw == on)
         return;
-    if (on) {
-        if (tcgetattr(STDIN_FILENO, &t->saved) != 0)
-            return;
-        struct termios r = t->saved;
-        r.c_lflag &= (tcflag_t) ~(ICANON | ECHO);
-        r.c_cc[VMIN] = 1;
-        r.c_cc[VTIME] = 0;
-        if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &r) != 0)
-            return;
-    } else if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &t->saved) != 0)
+    if (tty_raw(on) != 0)
         return;
     t->raw = on;
 }
@@ -690,20 +678,19 @@ enum {
 static int term_key(void)
 {
     unsigned char c;
-    if (read(STDIN_FILENO, &c, 1) != 1)
+    if (tty_byte(&c) != 1)
         return TERM_KEY_ESC; /* the input ended: let the page close */
     if (c != 27)
         return c;
-    struct pollfd pf = {STDIN_FILENO, POLLIN, 0};
     unsigned char lead = 0, final = 0;
     char par[16];
     int pn = 0;
-    if (poll(&pf, 1, 50) <= 0 || read(STDIN_FILENO, &lead, 1) != 1 ||
+    if (tty_wait(50) <= 0 || tty_byte(&lead) != 1 ||
         (lead != '[' && lead != 'O'))
         return TERM_KEY_ESC; /* nothing followed it: Escape itself */
     for (;;) {               /* the parameters, then the byte that names it */
         unsigned char b;
-        if (read(STDIN_FILENO, &b, 1) != 1)
+        if (tty_byte(&b) != 1)
             break;
         if (b >= 0x40 && b <= 0x7e) {
             final = b;

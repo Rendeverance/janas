@@ -65,7 +65,7 @@ struct janas_buf {
 void janas_buf_put(struct janas_buf *b, const char *s, size_t n);
 void janas_buf_puts(struct janas_buf *b, const char *s);
 void janas_buf_printf(struct janas_buf *b, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+    __attribute__((format(gnu_printf, 2, 3)));
 void janas_buf_free(struct janas_buf *b);
 
 /* v as JSON text, the way the chat templates' tojson writes it. */

@@ -123,14 +123,6 @@ struct worker_arg {
     int tid;
 };
 
-int janas_pin_current_thread(int cpu)
-{
-    cpu_set_t set;
-    CPU_ZERO(&set);
-    CPU_SET(cpu, &set);
-    return pthread_setaffinity_np(pthread_self(), sizeof(set), &set) ? -1 : 0;
-}
-
 static void *worker(void *v)
 {
     struct worker_arg wa = *(struct worker_arg *)v;

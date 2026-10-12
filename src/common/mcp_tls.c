@@ -4,6 +4,7 @@
  * mcp_tls.c - TLS on Mbed TLS for the HTTP client of MCP (see mcp_tls.h).
  */
 #include "common/mcp_tls.h"
+#include "common/sock.h"
 
 #include <errno.h>
 #include <poll.h>
@@ -39,6 +40,29 @@ static const char *const BUNDLES[] = {
     "/etc/ssl/cert.pem",                  /* Alpine, macOS */
     NULL};
 
+#ifdef _WIN32
+#include <windows.h>
+#include <wincrypt.h>
+
+/* Windows keeps no bundle: the authorities are the system's own store of
+   trusted roots. 1 when one at least was read. */
+static int load_system_roots(void)
+{
+    HCERTSTORE st = CertOpenSystemStoreA(0, "ROOT");
+    if (!st)
+        return 0;
+    int n = 0;
+    for (PCCERT_CONTEXT c = NULL;
+         (c = CertEnumCertificatesInStore(st, c)) != NULL;)
+        if (c->dwCertEncodingType == X509_ASN_ENCODING &&
+            mbedtls_x509_crt_parse_der(&authorities, c->pbCertEncoded,
+                                       c->cbCertEncoded) == 0)
+            n++;
+    CertCloseStore(st, 0);
+    return n > 0;
+}
+#endif
+
 /* Once: the crypto library, the authorities, the configuration shared by
    every session. Called with the lock held. */
 static int set_up(void)
@@ -59,6 +83,10 @@ static int set_up(void)
         loaded = mbedtls_x509_crt_parse_file(&authorities, file) >= 0;
     if (!loaded && dir && *dir)
         loaded = mbedtls_x509_crt_parse_path(&authorities, dir) >= 0;
+#ifdef _WIN32
+    if (!loaded)
+        loaded = load_system_roots();
+#endif
     for (int i = 0; !loaded && BUNDLES[i]; i++)
         /* a bundle with a certificate it cannot read still loads the rest,
            and says how many it skipped with a positive number */
@@ -84,7 +112,7 @@ static int set_up(void)
 
 static int bio_send(void *ctx, const unsigned char *p, size_t n)
 {
-    ssize_t w = send(*(int *)ctx, p, n, MSG_NOSIGNAL);
+    long w = janas_sock_send(*(int *)ctx, p, n);
     if (w >= 0)
         return (int)w;
     return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR
@@ -94,7 +122,7 @@ static int bio_send(void *ctx, const unsigned char *p, size_t n)
 
 static int bio_recv(void *ctx, unsigned char *p, size_t n)
 {
-    ssize_t r = recv(*(int *)ctx, p, n, 0);
+    long r = janas_sock_recv(*(int *)ctx, p, n);
     if (r >= 0)
         return (int)r;
     return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR

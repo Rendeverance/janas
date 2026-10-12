@@ -18,6 +18,7 @@
 #include <time.h>
 
 #include "prices.h"
+#include "services/common/tz.h"
 
 static void copy(char *to, size_t cap, const char *s)
 {
@@ -540,28 +541,16 @@ int pr_read_power(const char *t, size_t n, const char *tz, struct pr_series *s,
     int open = strstr(licence, "CC BY") != NULL;
     const struct janas_json *ts = janas_json_get(o, "unix_seconds");
     const struct janas_json *pr = janas_json_get(o, "price");
-    char *old = getenv("TZ") ? strdup(getenv("TZ")) : NULL;
-    if (tz && *tz)
-        setenv("TZ", tz, 1);
-    tzset();
     const struct janas_json *x = ts ? ts->child : NULL;
     const struct janas_json *y = pr ? pr->child : NULL;
     for (; open && x && y; x = x->next, y = y->next) {
         time_t at = (time_t)janas_json_num(x, 0);
         struct tm lt;
-        localtime_r(&at, &lt);
+        janas_tz_local(tz, at, &lt, NULL, 0);
         char when[24];
         strftime(when, sizeof when, "%Y-%m-%d %H:%M", &lt);
         add(s, when, janas_json_num(y, NAN));
     }
-    if (tz && *tz) {
-        if (old)
-            setenv("TZ", old, 1);
-        else
-            unsetenv("TZ");
-        tzset();
-    }
-    free(old);
     janas_json_free(d);
     if (!licence[0] || (open && !s->n)) {
         snprintf(err, err_len, "energy-charts: no prices");

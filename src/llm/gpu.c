@@ -401,9 +401,14 @@ struct janas_gpu *janas_gpu_create(char *err, size_t err_len)
         snprintf(err, err_len, "out of memory");
         return NULL;
     }
-    g->lib = dlopen("libvulkan.so.1", RTLD_NOW | RTLD_LOCAL);
+#ifdef _WIN32
+#define VULKAN_LOADER "vulkan-1.dll"
+#else
+#define VULKAN_LOADER "libvulkan.so.1"
+#endif
+    g->lib = dlopen(VULKAN_LOADER, RTLD_NOW | RTLD_LOCAL);
     if (!g->lib) {
-        snprintf(err, err_len, "no Vulkan loader (libvulkan.so.1)");
+        snprintf(err, err_len, "no Vulkan loader (" VULKAN_LOADER ")");
         free(g);
         return NULL;
     }

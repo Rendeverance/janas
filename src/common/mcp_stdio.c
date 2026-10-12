@@ -3,7 +3,6 @@
 /*
  * mcp_stdio.c - an MCP server as a child process (see mcp_stdio.h).
  */
-#define _GNU_SOURCE /* pipe2 */
 #include "common/mcp_stdio.h"
 
 #include <errno.h>
@@ -11,44 +10,13 @@
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
-#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
-extern char **environ;
-
 #define LINE_MAX_BYTES ((size_t)64 << 20)
-
-/* This process's environment with env laid over it: a KEY=VALUE of env
-   replaces the variable of the same name. */
-static char **merge_env(char *const env[])
-{
-    size_t n = 0, m = 0;
-    while (environ[n])
-        n++;
-    while (env && env[m])
-        m++;
-    char **out = calloc(n + m + 1, sizeof(*out));
-    if (!out)
-        return NULL;
-    size_t k = 0;
-    for (size_t i = 0; i < n; i++) {
-        const char *eq = strchr(environ[i], '=');
-        size_t key = eq ? (size_t)(eq - environ[i]) + 1 : strlen(environ[i]);
-        int replaced = 0;
-        for (size_t j = 0; j < m && !replaced; j++)
-            replaced = strncmp(env[j], environ[i], key) == 0;
-        if (!replaced)
-            out[k++] = environ[i];
-    }
-    for (size_t j = 0; j < m; j++)
-        out[k++] = env[j];
-    return out;
-}
 
 int janas_mcp_proc_start(struct janas_mcp_proc *p, char *const argv[],
                          char *const env[], const char *log_path, char *err,
@@ -58,64 +26,32 @@ int janas_mcp_proc_start(struct janas_mcp_proc *p, char *const argv[],
     p->in = p->out = -1;
     int to[2] = {-1, -1}, from[2] = {-1, -1};
     int log = -1, rc = -1;
-    char **envp = NULL;
-    posix_spawn_file_actions_t fa;
-    posix_spawnattr_t at;
-    int have_fa = 0, have_at = 0;
     if (!argv || !argv[0] || !*argv[0]) {
         snprintf(err, err_len, "no command");
         return -1;
     }
-    if (pipe2(to, O_CLOEXEC) != 0 || pipe2(from, O_CLOEXEC) != 0) {
+    if (janas_pipe(to) != 0 || janas_pipe(from) != 0) {
         snprintf(err, err_len, "pipe: %s", strerror(errno));
         goto out;
     }
     if (log_path)
         log = open(log_path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
     if (log < 0)
-        log = open("/dev/null", O_WRONLY | O_CLOEXEC);
-    envp = merge_env(env);
-    if (!envp || log < 0) {
-        snprintf(err, err_len, "out of memory or no /dev/null");
+        log = janas_null_fd(1);
+    if (log < 0) {
+        snprintf(err, err_len, "no null device");
         goto out;
     }
-    have_fa = posix_spawn_file_actions_init(&fa) == 0;
-    have_at = posix_spawnattr_init(&at) == 0;
-    if (!have_fa || !have_at) {
-        snprintf(err, err_len, "out of memory");
-        goto out;
-    }
-    posix_spawn_file_actions_adddup2(&fa, to[0], 0);
-    posix_spawn_file_actions_adddup2(&fa, from[1], 1);
-    posix_spawn_file_actions_adddup2(&fa, log, 2);
     /* a group of its own, the signals as a new program has them */
-    sigset_t none, dflt;
-    sigemptyset(&none);
-    sigemptyset(&dflt);
-    sigaddset(&dflt, SIGPIPE);
-    sigaddset(&dflt, SIGINT);
-    posix_spawnattr_setpgroup(&at, 0);
-    posix_spawnattr_setsigmask(&at, &none);
-    posix_spawnattr_setsigdefault(&at, &dflt);
-    posix_spawnattr_setflags(&at, POSIX_SPAWN_SETPGROUP |
-                                      POSIX_SPAWN_SETSIGMASK |
-                                      POSIX_SPAWN_SETSIGDEF);
-    int e = posix_spawnp(&p->pid, argv[0], &fa, &at, argv, envp);
-    if (e != 0) {
-        p->pid = 0;
-        snprintf(err, err_len, "cannot start %s: %s", argv[0], strerror(e));
+    if (janas_proc_start(&p->proc, (const char *const *)argv,
+                         (const char *const *)env, NULL, to[0], from[1], log,
+                         JANAS_PROC_GROUP, err, err_len) != 0)
         goto out;
-    }
     p->in = to[1];
     p->out = from[0];
     to[1] = from[0] = -1;
     rc = 0;
 out:
-    if (have_fa)
-        posix_spawn_file_actions_destroy(&fa);
-    if (have_at)
-        posix_spawnattr_destroy(&at);
-    free(envp);
     for (int i = 0; i < 2; i++) {
         if (to[i] >= 0)
             close(to[i]);
@@ -134,6 +70,17 @@ int janas_mcp_proc_send(struct janas_mcp_proc *p, const char *s, size_t n)
 {
     if (p->in < 0)
         return -1;
+#ifdef _WIN32
+    /* no signal there: a write to a pipe nobody reads only fails */
+    while (n > 0) {
+        int w = write(p->in, s, n > 0x40000000u ? 0x40000000u : (unsigned)n);
+        if (w <= 0)
+            return -1;
+        s += w;
+        n -= (size_t)w;
+    }
+    return 0;
+#else
     sigset_t pipe_set, old;
     sigemptyset(&pipe_set);
     sigaddset(&pipe_set, SIGPIPE);
@@ -160,6 +107,7 @@ int janas_mcp_proc_send(struct janas_mcp_proc *p, const char *s, size_t n)
     }
     pthread_sigmask(SIG_SETMASK, &old, NULL);
     return rc;
+#endif
 }
 
 static double now_ms(void)
@@ -232,33 +180,19 @@ int janas_mcp_proc_line(struct janas_mcp_proc *p, int timeout_ms,
     }
 }
 
-/* Waits up to ms for the process to end; 1 when it has. */
-static int reap(pid_t pid, int ms)
-{
-    for (int waited = 0;; waited += 10) {
-        pid_t r = waitpid(pid, NULL, WNOHANG);
-        if (r == pid || (r < 0 && errno == ECHILD))
-            return 1;
-        if (waited >= ms)
-            return 0;
-        struct timespec t = {0, 10 * 1000 * 1000};
-        nanosleep(&t, NULL);
-    }
-}
-
 void janas_mcp_proc_stop(struct janas_mcp_proc *p)
 {
     if (p->in >= 0)
         close(p->in);
     p->in = -1;
-    if (p->pid > 0 && !reap(p->pid, 1000)) {
-        kill(-p->pid, SIGTERM);
-        if (!reap(p->pid, 2000)) {
-            kill(-p->pid, SIGKILL);
-            waitpid(p->pid, NULL, 0);
+    if (p->proc.id && janas_proc_wait(&p->proc, 1000, NULL) == 0) {
+        janas_proc_kill(&p->proc, 0);
+        if (janas_proc_wait(&p->proc, 2000, NULL) == 0) {
+            janas_proc_kill(&p->proc, 1);
+            janas_proc_wait(&p->proc, -1, NULL);
         }
     }
-    p->pid = 0;
+    memset(&p->proc, 0, sizeof p->proc);
     if (p->out >= 0)
         close(p->out);
     p->out = -1;

@@ -29,7 +29,9 @@
 #include <string.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <sys/sysmacros.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 
@@ -45,9 +47,13 @@ static double now(void)
 }
 
 /* Milliseconds the block device (partition) of path has been busy, from
-   /proc/diskstats (io_ticks), or -1. */
+   /proc/diskstats (io_ticks), or -1 (always on Windows). */
 static long long disk_busy_ms(const char *path)
 {
+#ifdef _WIN32
+    (void)path;
+    return -1;
+#else
     struct stat st;
     if (stat(path, &st) != 0)
         return -1;
@@ -72,6 +78,7 @@ static long long disk_busy_ms(const char *path)
     }
     fclose(f);
     return busy;
+#endif
 }
 
 static int32_t argmax(const float *v, uint32_t n)

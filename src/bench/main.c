@@ -89,7 +89,7 @@ static double now(void)
 static FILE *report;
 
 /* Printed to the terminal and to the report file. */
-static void out(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void out(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
 static void out(const char *fmt, ...)
 {
     va_list ap;
