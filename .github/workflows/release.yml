@@ -125,14 +125,18 @@ jobs:
   # headers do), then tested on Windows, then packed.
   windows-build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
       - name: MinGW-w64, the shaders' compiler and the Vulkan headers
         run: |
           set -euo pipefail
-          sudo apt-get update -q
-          sudo apt-get install -y -q gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+          # no question may wait for an answer (needrestart asks one)
+          export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
+          sudo -E apt-get update -q
+          sudo -E apt-get install -y -q --no-install-recommends \
+            gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
           mkdir -p "$RUNNER_TEMP/khronos"
           cd "$RUNNER_TEMP/khronos"
           curl -fsSL -o glslang.tar.gz \
@@ -168,6 +172,7 @@ jobs:
   windows-test:
     needs: windows-build
     runs-on: windows-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
 
@@ -190,6 +195,7 @@ jobs:
   windows-package:
     needs: [linux-x86_64, windows-build, windows-test]
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       WPACKAGE: janas-windows-x86_64
     steps:
