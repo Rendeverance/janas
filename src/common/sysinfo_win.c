@@ -59,7 +59,9 @@ static int cores_of(struct core *out, int max)
             struct core *c = &out[n++];
             c->n_cpus = 0;
             c->first = -1;
-            c->cls = e->Processor.EfficiencyClass;
+            /* the byte after Flags: EfficiencyClass in the headers of
+               MinGW-w64 12 and later, Reserved[0] in the older ones */
+            c->cls = ((const BYTE *)&e->Processor)[1];
             for (WORD g = 0; g < e->Processor.GroupCount; g++) {
                 GROUP_AFFINITY *ga = &e->Processor.GroupMask[g];
                 for (int b = 0; b < 64; b++)
