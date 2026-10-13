@@ -2,6 +2,11 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-13] - A ceiling on the reasoning
+
+- **The reasoning can be given a ceiling**: `max_reasoning` in the library's chat parameters, `--reasoning-budget` and `reasoning_budget_tokens` (or `thinking_budget_tokens`, the names llama.cpp takes) on the server, `--think N` and `/think N` in the chat. A model still reasoning there has its reasoning closed for it, a sentence ("I have thought enough; now I give the answer.") and the closing mark written as if it had written them, and goes on with its answer; with no ceiling nothing changes, the replies identical to the bit. The sentence is what makes a small model answer: cut at 32 tokens with janas-chat's system message, Qwen3.5-0.8B, Qwen3.5-2B and Qwen3-4B ended 20 of 36 replies themselves given the mark alone, the small ones going on reasoning in their answer and mostly looping to its end, and 35 of 36 given the sentence, the replies a third as long (96 tokens on average against 265); Qwen3-4B answered either way.
+
+
 ## [2026-10-13] - A build without the GPU, and a request that never ended
 
 - **A build without GPU support links again** (issue #22, reported by mashirotamigi): two of the GPU's functions had no stand-in in such a build, and without `glslangValidator` the link failed.
