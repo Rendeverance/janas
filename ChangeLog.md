@@ -2,6 +2,18 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-13] - janas-bench says what the GPU does
+
+- **`janas-bench` says that the GPU reads a prompt in every configuration** (issue #16, a Radeon 780M): with the fast prompt a prompt's blocks of 64 tokens or more go to the GPU whether a row says "+ GPU" or not, so that a prompt gives the same results in each, and the rows without it had been read as the CPU alone, the GPU as of no help where it read Qwen3-4B's prompt 5.2 times faster (477 against 92 tokens/s). A note under the table now says so; "+ GPU" is the GPU's part in the shorter passes.
+- **`JANAS_GPU_VERBOSE` puts the calls the GPU does whole on lines of their own** ("gpu alone"): the CPU waits there with nothing to do, and they had been counted as a GPU late, with a share that does not apply to them. Reporting only: the share is learned as before.
+- **The hardware page tells what testers found**: on the 780M subgroups of 32 (`JANAS_GPU_SG=32`) cost 14% against the 64 the engine chooses, and on discrete cards the defect of issue #17.
+
+
+## [2026-10-13] - A discrete GPU's results reach the CPU again
+
+- **On a GPU with memory of its own the products' results reach the CPU again** (issue #17, reported and diagnosed by xpil on a Quadro RTX 5000, with the fix's first form and its test): since the release of 10 October the engine registered its output buffers with the GPU, so that one sharing the host's memory writes them in place, but on a discrete card a registration is a copy in the card's memory, and the CPU went on reading what its buffers held before. Results are written in place only where the GPU shares the host's memory; elsewhere they come back through the staging buffer, as before 10 October. `test_gpu_output_copy` checks it on any GPU (`JANAS_GPU_COPY=1` gives an integrated one the copy path): -12345 instead of 256 before the fix, 256 with it. On that path Qwen3-4B read a prompt in blocks of 64 tokens with the most likely token as read token by token at 0 of 64 positions before the fix (mean difference of the logits 5.73), and at 61 with it (0.098, the fast prompt's usual rounding).
+
+
 ## [2026-10-13] - The GPU's passes of a few tokens
 
 - **Qwen3.8-27B's drafts verified on the GPU a little faster, 7.7 tokens/s in two runs against 7.6 and 7.0** (`JANAS_GPU_SHORT=1`, 64 tokens of code): no chain longer than the GPU's shaders of a few vectors take (a ninth token doubled the pass: 854 ms against 437 for 5), and the recurrent layers' betas and decays read their inputs a quarter as often (3.7 ms a pass of 8 tokens where they took 13.5), with the same results to the bit.

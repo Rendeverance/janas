@@ -144,8 +144,4 @@ int janas_gpu_tok_run(struct janas_gpu *g, struct janas_gpu_tok *t,
                       uint32_t src, uint32_t dst, uint32_t replay,
                       uint32_t log_row);
 
-/* Whether the GPU reads the host's memory in place (an integrated GPU with
-   the host-memory import, not JANAS_GPU_COPY): what the token needs. */
-int janas_gpu_shares_host(const struct janas_gpu *g);
-
 #endif

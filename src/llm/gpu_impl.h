@@ -104,6 +104,10 @@ struct region {
     VkDeviceMemory mem;
     VkDeviceAddress addr;
     int coherent; /* allocated regions: else flushed after host writes */
+    /* the host's own memory (imported, or the driver's mapped): what the
+       GPU writes there the CPU reads. 0: a copy in a card's own memory
+       (copy_to_device), which the GPU's writes never leave */
+    int host_shared;
 };
 
 struct stage {
@@ -202,7 +206,9 @@ struct janas_gpu {
     struct share {
         uint64_t key;
         float f;
-        uint32_t calls, waits;
+        /* alone: calls with every row on the GPU, where the CPU waits
+           having nothing to do; waits: the others the GPU was late in */
+        uint32_t calls, waits, alone;
         double t_begin, t_cpu, t_wait, t_copy; /* seconds, verbose only */
         uint64_t rows_gpu, rows_all;
         uint32_t off;     /* calls left on the CPU alone */

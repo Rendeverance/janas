@@ -146,5 +146,10 @@ size_t janas_gpu_min_n(const struct janas_gpu *g);
    beyond which a product goes to the slower shaders of many vectors: 8,
    or 0 without them. */
 size_t janas_gpu_few_max(const struct janas_gpu *g);
+/* Whether the GPU reads and writes the host's memory in place (an
+   integrated GPU with the host-memory import, not JANAS_GPU_COPY): what the
+   whole token needs, and what makes the engine's buffers worth importing.
+   On a card with memory of its own an import is a copy. */
+int janas_gpu_shares_host(const struct janas_gpu *g);
 
 #endif

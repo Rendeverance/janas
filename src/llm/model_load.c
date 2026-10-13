@@ -1206,9 +1206,14 @@ struct janas_llm_model *janas_llm_model_load(const char *path,
         /* the products' outputs too, so that the GPU writes them where the
            engine reads them: through a staging buffer they cost a copy on
            one thread, 0.4-2.8 ms a block of a layer on Qwen3-4B (9 Oct
-           2026). One that cannot be shared keeps the copy. */
-        for (int i = 0; i < m->n_out; i++)
-            janas_gpu_import(m->gpu, m->out[i].p, m->out[i].bytes);
+           2026). One that cannot be shared keeps the copy. Only where the
+           GPU shares the host's memory: on a card with memory of its own an
+           import is a copy there, which the GPU's writes never left - the
+           CPU read stale outputs, a Quadro RTX 5000 garbled its answers
+           (issue #17) */
+        if (janas_gpu_shares_host(m->gpu))
+            for (int i = 0; i < m->n_out; i++)
+                janas_gpu_import(m->gpu, m->out[i].p, m->out[i].bytes);
     }
     janas_m_init_tuner(m);
     return m;

@@ -749,21 +749,33 @@ void janas_gpu_destroy(struct janas_gpu *g)
     if (g->verbose)
         fprintf(stderr, "gpu begin: convert %.3f s, submit %.3f s\n", g->t_conv,
                 g->t_sub);
-    for (int i = 0; g->verbose && i < SHARE_SLOTS; i++)
-        if (g->share[i].calls)
+    /* the key: (group's products << 48) ^ (rows << 24) ^ (columns << 8) ^
+       vectors, of its first product. Calls with every row on the GPU (the
+       fast prompt's) apart: there the CPU waits having nothing to do, and
+       neither "late" nor the share says anything (issue #16 read them as a
+       GPU always behind) */
+    for (int i = 0; g->verbose && i < SHARE_SLOTS; i++) {
+        const struct share *s = &g->share[i];
+        if (!s->calls)
+            continue;
+        double c = 1e6 / s->calls;
+        if (s->alone == s->calls)
+            fprintf(stderr,
+                    "gpu alone: key %016llx, %u calls with every row on the "
+                    "GPU; us/call: begin %.0f wait %.0f copy %.0f\n",
+                    (unsigned long long)s->key, s->calls, c * s->t_begin,
+                    c * s->t_wait, c * s->t_copy);
+        else
             fprintf(
                 stderr,
-                "gpu share: key %016llx, %u calls, GPU late in %u, "
-                "share %.2f (mean %.2f); us/call: begin %.0f cpu %.0f "
-                "wait %.0f copy %.0f\n",
-                (unsigned long long)g->share[i].key, g->share[i].calls,
-                g->share[i].waits, g->share[i].f,
-                (double)g->share[i].rows_gpu /
-                    (double)(g->share[i].rows_all ? g->share[i].rows_all : 1),
-                1e6 * g->share[i].t_begin / g->share[i].calls,
-                1e6 * g->share[i].t_cpu / g->share[i].calls,
-                1e6 * g->share[i].t_wait / g->share[i].calls,
-                1e6 * g->share[i].t_copy / g->share[i].calls);
+                "gpu share: key %016llx, %u calls (%u with every row on "
+                "the GPU), GPU late in %u of the others, share %.2f "
+                "(mean %.2f); us/call: begin %.0f cpu %.0f wait %.0f "
+                "copy %.0f\n",
+                (unsigned long long)s->key, s->calls, s->alone, s->waits, s->f,
+                (double)s->rows_gpu / (double)(s->rows_all ? s->rows_all : 1),
+                c * s->t_begin, c * s->t_cpu, c * s->t_wait, c * s->t_copy);
+    }
     if (g->ka_running) {
         atomic_store(&g->ka_stop, 1);
         pthread_join(g->ka, NULL);
@@ -1070,6 +1082,7 @@ static int copy_to_device(struct janas_gpu *g, const void *p, size_t bytes)
     rg->bytes = bytes;
     rg->addr = janas_g_buffer_address(g, rg->buf);
     rg->coherent = 1;
+    rg->host_shared = 0;
     g->n_reg++;
     return 0;
 
@@ -1135,6 +1148,7 @@ int janas_gpu_import(struct janas_gpu *g, const void *p, size_t bytes)
     rg->bytes = bytes;
     rg->addr = janas_g_buffer_address(g, rg->buf);
     rg->coherent = 1;
+    rg->host_shared = 1;
     g->n_reg++;
     return 0;
 }
@@ -1182,6 +1196,7 @@ void *janas_gpu_alloc(struct janas_gpu *g, size_t bytes)
     rg->addr = janas_g_buffer_address(g, rg->buf);
     rg->coherent = (g->mp.memoryTypes[t].propertyFlags &
                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+    rg->host_shared = 1;
     g->n_reg++;
     return p;
 }
@@ -1368,11 +1383,14 @@ int janas_gpu_begin(struct janas_gpu *g, const struct janas_matvec_task *tasks,
             n_xc++;
         }
         /* an output the GPU shares (the engine's buffers, imported at
-           load): written there, rows as the CPU lays them out, no copy */
+           load): written there, rows as the CPU lays them out, no copy.
+           Not a card's copy of it, which the GPU's writes would never
+           leave - the CPU read what was there before (issue #17): through
+           the stage then */
         size_t ystr = t->y_stride ? t->y_stride : t->rows;
         const struct region *yr = janas_g_find_region(
             g, t->y, ((nv - 1) * ystr + gpu_rows[i]) * sizeof(float));
-        if (yr) {
+        if (yr && yr->host_shared) {
             if (janas_g_record_task(
                     g, &bound, t, gpu_rows[i], g->xs.addr + xc[k].off,
                     yr->addr +
@@ -2038,7 +2056,7 @@ static int experts_id(struct janas_gpu *g, struct janas_pool *pool,
             janas_g_find_region(g, t[i].w, read_bytes(&t[i], t[i].rows));
         const struct region *yr = janas_g_find_region(
             g, t[i].y, ((nv - 1) * ys + t[i].rows) * sizeof(float));
-        if (!wr || !yr)
+        if (!wr || !yr || !yr->host_shared) /* outputs written in place */
             return -1;
         uint32_t *e = tb + 12 * ng++;
         janas_g_push_addr(
@@ -2164,7 +2182,8 @@ int janas_gpu_dense_mm(struct janas_gpu *g, int bf16, const void *w,
         janas_g_find_region(g, w, rows * cols * (bf16 ? 2 : 4));
     const struct region *xr = janas_g_find_region(g, x, n * cols * 4);
     const struct region *yr = janas_g_find_region(g, y, n * rows * 4);
-    if (!wr || !xr || !yr)
+    /* x read and y written in place: the host's own memory only */
+    if (!wr || !xr || !yr || !xr->host_shared || !yr->host_shared)
         return -1;
     if (g->vkResetCommandBuffer(g->cb, 0) != VK_SUCCESS)
         return -1;
@@ -2330,7 +2349,10 @@ void janas_gpu_matvec_group(struct janas_gpu *g, struct janas_pool *pool,
     if (nv >= g->full_n) {
         if (g->verbose && sh) {
             sh->calls++;
-            sh->waits += (uint32_t)waited;
+            if (any == all)
+                sh->alone++;
+            else
+                sh->waits += (uint32_t)waited;
             sh->t_begin += t1 - t0;
             sh->t_cpu += t2 - t1;
             sh->t_wait += g->t_waited;
@@ -2352,7 +2374,10 @@ void janas_gpu_matvec_group(struct janas_gpu *g, struct janas_pool *pool,
     }
     /* late GPU: less next time; early: more */
     sh->calls++;
-    sh->waits += (uint32_t)waited;
+    if (any == all)
+        sh->alone++; /* reported apart; the share learns as before */
+    else
+        sh->waits += (uint32_t)waited;
     if (waited && sh->f <= 0.05f) {
         sh->off = 256; /* not worth it for this shape: retry later */
         return;
