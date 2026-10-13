@@ -2,6 +2,13 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-13] - A build without the GPU, and a request that never ended
+
+- **A build without GPU support links again** (issue #22, reported by mashirotamigi): two of the GPU's functions had no stand-in in such a build, and without `glslangValidator` the link failed.
+- **A glslang too old for the shaders builds without the GPU, and says so**, where the build stopped at the first shader: the shaders need `GL_EXT_integer_dot_product`, which glslang knows from 15.2 on, and Ubuntu 24.04's is 15.1. `build.sh` tries `glslangValidator` on a probe first; the reason reaches the engine, which gives it when asked for the GPU. `INSTALL.md` says where to find a newer glslang on Ubuntu 24.04.
+- **Issue #21, a server request that never ended on an RTX 5060 Ti with the tuner on, was issue #17's**: on a discrete card the tuner tries the GPU for single tokens too, whose results never reached the CPU, and the model's reasoning, garbled, never closed; in a chat `max_tokens` caps the answer, not the reasoning, so the reply ran towards the end of the context. Reproduced here on the path a discrete card takes: with the code before the fix the request had not ended after 180 s, the server at 57 minutes of CPU; with it, the right answer in 7.5 s.
+
+
 ## [2026-10-13] - vkcheck: can this GPU run Janas-LLM?
 
 - **`vkcheck` tells whether a GPU can run Janas-LLM's GPU backend, and why not**: every requirement with the driver's answer (Vulkan 1.3, buffer addresses, the integer dot product, the subgroup operations the shaders use, the size of a subgroup, host memory imported in place), the decision the engine would take, then three tests on the device: zero-copy, the int8 dot product (exact, and a rough rate that shows whether the driver emulates it) and the float operations that keep the GPU's results the CPU's to the bit. On the development laptop's Arc everything passes, the dot product at 1,711 billion multiply-adds a second. It is a single C file that builds where Janas does not build yet, macOS with MoltenVK included: the first step of the arm64 and Apple Silicon port proposed in issue #20.

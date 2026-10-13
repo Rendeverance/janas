@@ -2397,7 +2397,10 @@ struct janas_gpu {
 
 struct janas_gpu *janas_gpu_create(char *err, size_t err_len)
 {
-#if !defined(JANAS_GPU_SPV)
+#if defined(JANAS_GPU_WHY)
+    snprintf(err, err_len, "built without GPU support: it needs %s",
+             JANAS_GPU_WHY);
+#elif !defined(JANAS_GPU_SPV)
     snprintf(err, err_len,
              "built without GPU support: glslangValidator was "
              "not installed when Janas was built");
@@ -2413,6 +2416,18 @@ struct janas_gpu *janas_gpu_create(char *err, size_t err_len)
 void janas_gpu_destroy(struct janas_gpu *g)
 {
     (void)g;
+}
+
+/* no fast prompt without a GPU (issue #22: the link failed without them) */
+int janas_gpu_fast_prompt(void)
+{
+    return 0;
+}
+
+void janas_gpu_set_only_fast(struct janas_gpu *g, int on)
+{
+    (void)g;
+    (void)on;
 }
 
 int janas_gpu_import(struct janas_gpu *g, const void *p, size_t bytes)
