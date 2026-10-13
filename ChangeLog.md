@@ -2,6 +2,11 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-13] - vkcheck: can this GPU run Janas-LLM?
+
+- **`vkcheck` tells whether a GPU can run Janas-LLM's GPU backend, and why not**: every requirement with the driver's answer (Vulkan 1.3, buffer addresses, the integer dot product, the subgroup operations the shaders use, the size of a subgroup, host memory imported in place), the decision the engine would take, then three tests on the device: zero-copy, the int8 dot product (exact, and a rough rate that shows whether the driver emulates it) and the float operations that keep the GPU's results the CPU's to the bit. On the development laptop's Arc everything passes, the dot product at 1,711 billion multiply-adds a second. It is a single C file that builds where Janas does not build yet, macOS with MoltenVK included: the first step of the arm64 and Apple Silicon port proposed in issue #20.
+
+
 ## [2026-10-13] - Qwen3-Coder-Next as llama.cpp writes it now
 
 - **qwen3next models converted by llama.cpp since early 2026 load** (issue #18, reported by nica-f with unsloth's Qwen3-Coder-Next-Q3_K_M): the recurrent layers' input projection comes as two tensors, `attn_qkv` and `attn_gate`, where the engine wanted the single `ssm_in`, its rows interleaved per key head. Both layouts are read; Qwen3-Coder-Next rewritten in the new one gives the very logits of the old, to the bit, token by token and in blocks.

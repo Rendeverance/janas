@@ -36,6 +36,8 @@ bin/x86_64-linux/janas-bench <model>
 
 The [hardware report form](https://github.com/prabanta-dev/janas/issues/new?template=01-hardware-report.yml) asks for exactly that, in that order. There are two more forms, for [something that went wrong](https://github.com/prabanta-dev/janas/issues/new?template=02-something-went-wrong.yml) and for [a model that will not convert](https://github.com/prabanta-dev/janas/issues/new?template=03-a-model-will-not-work.yml).
 
+**Whether a GPU can run the GPU backend**, and why not: `bin/x86_64-linux/vkcheck` lists what the backend needs with the answer of the GPU's driver, the decision the engine would take, and three short tests on the device (zero-copy, the int8 dot product, the float operations that keep the GPU's results the CPU's to the bit). It builds alone where Janas does not build yet, macOS with MoltenVK included: `cc -O2 tools/vkcheck.c -o vkcheck -ldl -lm` (on macOS without `-ldl -lm`, with `-I/opt/homebrew/include`). Its output is welcome in a hardware report.
+
 **What is most wanted, in order.**
 
 1. **CPUs without AVX-VNNI**, and **AMD** — the arithmetic has a path for them and it is the least exercised of all.
