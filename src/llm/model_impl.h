@@ -396,7 +396,9 @@ void janas_m_arena_to_gpu(struct janas_llm_model *m);
    the GPU failed after replaying on the base in place, the state lost. */
 int janas_m_gpu_token(struct janas_llm_model *m, uint32_t pos, uint32_t n,
                       int all, float *logits);
-void janas_m_apply_candidate(struct janas_llm_model *m, int cand);
+void janas_m_apply_candidate(struct janas_llm_model *m, int cand, uint32_t nv);
+/* Whether the whole token is asked of the GPU (JANAS_GPU_TOKEN=1). */
+int janas_m_gpu_token_asked(void);
 uint32_t *janas_m_profile_read(const struct janas_llm_model *m, size_t *used);
 void janas_m_profile_write(const struct janas_llm_model *m);
 void janas_m_norm_quant(struct janas_llm_model *m, const float *w,

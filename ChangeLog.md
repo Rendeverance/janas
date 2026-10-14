@@ -2,6 +2,11 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-14] - An integrated GPU no longer kept awake for single tokens
+
+- **The GPU is kept awake only for the passes it takes.** On an integrated GPU a reply's single tokens stay on the CPU, but a configuration with the GPU kept it awake for them too - an empty dispatch every half millisecond - and on a laptop the awake GPU takes the power the cores need: janas-bench's "+ GPU" rows wrote a reply slower than the CPU alone, 10.5 tokens/s against 17.3 on a Radeon 780M (issue #16, reported by dlahoza), 2-5% slower on the development laptop's Arc. Now they write as fast (Qwen3-4B, 20, 12 and 6 threads: 28.5/28.1, 28.0/28.0 and 26.3/26.3 tokens/s with "+ GPU", 28.5/28.3, 28.1/28.0 and 26.3/26.3 without, two alternated runs). A chat's own choices were not affected: the tuner gives single tokens to the GPU only where it takes them, a discrete GPU. janas-bench's note says that the single tokens are the CPU's in every row where so.
+
+
 ## [2026-10-14] - MXFP4 experts, and output heads in BF16
 
 - **The "MXFP4_MOE" files run.** Their routed experts are MXFP4 (OCP's microscaling format: 32 four-bit values and a power of two a block), which gguf2jns refused and the engine could not read. The engine has MXFP4 products now - IQ4_NL's kernel with the block's power of two for a scale, the same bits on AVX2 and AVX-VNNI, for one vector or eight, and the same bits as the exact Q8_0 rewrite of the same blocks - and gguf2jns keeps such experts as they are. noctrex's Qwen3.6-35B-A3B-MXFP4_MOE against llama.cpp on the same file: 199 of 200 most likely tokens agree, mean logit difference 0.105 (on Italian prose 63 of 64, 0.085), closer than bartowski's Q4_K_M to its own llama.cpp (196, 0.146; 60, 0.135). The file itself, against llama.cpp's Q8_0 of the same model, is further than that Q4_K_M (378 against 387 of 400 most likely tokens, 364 against 370 on Italian prose) and 9% smaller (20.3 GB against 22.3). On 12 threads of the development laptop the MXFP4 product reads 66 GB/s where IQ4_NL reads 73: 4% fewer weights a second, a block of it being 17 bytes to IQ4_NL's 18 (its scales come from a table: computed in the kernel, they took registers the unpacking needs and it ran 14% slower).
