@@ -23,8 +23,8 @@
  * one (E8M0, 2^(e - 128)), and so is Q8_0's with the power as its fp16
  * scale. Only a block whose power is below fp16's least, 2^-24, and whose
  * weights are so below 3.6e-7, is written as zeros (counted). Routed
- * experts in MXFP4 are refused: twice their bytes a token would undo what
- * the format is for.
+ * experts in MXFP4 (the MXFP4_MOE files) stay MXFP4, which the engine reads
+ * as it is: as Q8_0 they would read twice the bytes at every token.
  *
  * A model split into several GGUF files (name-00001-of-0000N.gguf) is read
  * from all of them: give the first. Data is copied in streaming; the model
@@ -352,10 +352,6 @@ int main(int argc, char **argv)
             if (!t)
                 die("%s missing: only models with routed experts in every "
                     "layer, or dense ones, are supported",
-                    key);
-            if (t->t->type == GGUF_MXFP4)
-                die("%s: routed experts in MXFP4 are not supported yet; a "
-                    "file with K-quants (Q4_K_M, Q3_K_M) works",
                     key);
             uint64_t ne = t->t->n_dims > 2 ? t->t->dims[2] : 1;
             if (ne != n_expert || t->t->bytes % n_expert ||

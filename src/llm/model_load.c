@@ -212,6 +212,85 @@ static void *rq_worker(void *arg)
     return NULL;
 }
 
+/*
+ * An output head or embedding table in BF16 or F16 - the MXFP4_MOE files
+ * keep output.weight in BF16, 1.02 GB for Qwen3.6-35B-A3B's 248,320 rows -
+ * rewritten once, at load, as Q8_0, as llama.cpp's quantize would make it:
+ * the products read quantized types, and the head, read whole at every
+ * token, is read at half the bytes (BF16 would cost some 12 ms a token at
+ * 81 GB/s). Built beside and copied in place, Q8_0 being the smaller.
+ */
+struct h16_job {
+    const uint8_t *src;
+    struct janas_block_q8_0 *dst;
+    size_t first, count; /* blocks of 32 weights */
+    int bf16;
+};
+
+static void *h16_worker(void *arg)
+{
+    struct h16_job *r = arg;
+    float buf[32];
+    for (size_t b = r->first; b < r->first + r->count; b++) {
+        const uint16_t *s = (const uint16_t *)(r->src + b * 64);
+        for (int j = 0; j < 32; j++) {
+            if (r->bf16) {
+                uint32_t bits = (uint32_t)s[j] << 16;
+                memcpy(&buf[j], &bits, sizeof(float));
+            } else
+                buf[j] = janas_fp16_to_fp32(s[j]);
+        }
+        janas_q8_0_quantize(buf, r->dst + b, 32);
+    }
+    return NULL;
+}
+
+static void head16_to_q8_0(struct janas_llm_model *m, const char *name)
+{
+    struct janas_jns_tensor *t =
+        (struct janas_jns_tensor *)janas_jns_tensor(&m->j, name);
+    if (!t || (t->type != 30 && t->type != 1) || t->dims[0] % JANAS_QK ||
+        t->offset < m->j.h.resident_offset ||
+        t->offset + t->bytes > m->j.h.resident_offset + m->j.h.resident_bytes)
+        return;
+    enum { NT = 16 };
+    long cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    int nt = cpus < 1 ? 1 : cpus > NT ? NT : (int)cpus;
+    size_t nb = t->bytes / 64;
+    uint8_t *src = (uint8_t *)data(m, t);
+    struct janas_block_q8_0 *dst = malloc(nb * sizeof(*dst));
+    if (!dst)
+        return;
+    pthread_t th[NT];
+    struct h16_job jb[NT];
+    int started = 0;
+    for (int k = 0; k < nt; k++) {
+        size_t a = nb * k / nt, b = nb * (k + 1) / nt;
+        jb[k] = (struct h16_job){.src = src,
+                                 .dst = dst,
+                                 .first = a,
+                                 .count = b - a,
+                                 .bf16 = t->type == 30};
+        if (pthread_create(&th[k], NULL, h16_worker, &jb[k]) == 0)
+            started |= 1 << k;
+        else
+            h16_worker(&jb[k]);
+    }
+    for (int k = 0; k < nt; k++)
+        if (started & 1 << k)
+            pthread_join(th[k], NULL);
+    if (!strcmp(name, "output.weight") ||
+        !janas_jns_tensor(&m->j, "output.weight")) {
+        m->head16 = (int)t->type;
+        m->head16_before = t->bytes;
+        m->head16_after = nb * sizeof(*dst);
+    }
+    t->type = JANAS_Q8_0;
+    t->bytes = nb * sizeof(*dst);
+    memcpy(src, dst, t->bytes);
+    free(dst);
+}
+
 static void requant_head(struct janas_llm_model *m)
 {
     /* tied embeddings (the small Qwen): the table is the head */
@@ -744,6 +823,8 @@ struct janas_llm_model *janas_llm_model_load(const char *path,
         }
         done += (uint64_t)r;
     }
+    head16_to_q8_0(m, "output.weight");
+    head16_to_q8_0(m, "token_embd.weight");
     const char *hbe = getenv("JANAS_HEAD_BITS");
     if ((hbe ? atoi(hbe) : o->head_bits) == 4 && !m->resident_gpu)
         requant_head(m);
@@ -1439,6 +1520,14 @@ void janas_llm_model_head_requant(const struct janas_llm_model *m,
 {
     *before = m->head_before;
     *after = m->head_after;
+}
+
+int janas_llm_model_head16(const struct janas_llm_model *m, uint64_t *before,
+                           uint64_t *after)
+{
+    *before = m->head16_before;
+    *after = m->head16_after;
+    return m->head16;
 }
 
 int janas_llm_model_experts_auto(const struct janas_llm_model *m)
