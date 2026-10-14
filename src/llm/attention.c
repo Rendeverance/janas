@@ -659,6 +659,9 @@ static void attn_item(struct attn_job *a, uint32_t it, float *sc, int avx,
             srow[s] = sc + (size_t)sl * ATT_CHUNK;
         }
         const int8_t *pf = s0 ? NULL : V;
+#if !defined(__x86_64__)
+        (void)pf;
+#endif
         if (A->kv16) {
 #if defined(__x86_64__)
             if (avx)
