@@ -479,7 +479,6 @@ det8(const float *g, const float *u, float *h, int n)
 static void test_det(void)
 {
 #if defined(__x86_64__)
-    /* the scalar result and the AVX2 one must agree bit for bit */
     float g[1024], u[1024];
     int bad = 0;
     for (int round = 0; round < 1000; round++) {
