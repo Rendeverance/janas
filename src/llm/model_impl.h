@@ -389,6 +389,15 @@ void janas_m_init_tuner(struct janas_llm_model *m);
 /* Memory the GPU will import collapsed into 2 MB pages (Linux; see
    model_load.c), before the import pins it. */
 void janas_m_huge_pages(void *p, uint64_t bytes);
+/* The longest region of memory the GPU imports (gpu.c janas_gpu_import). */
+#define JANAS_M_REGION_MAX ((uint64_t)4 << 30)
+/* The next region the GPU imports of bytes, from at: its first byte into
+   *from (at, or the 2 MB boundary before it where huge: memory allocated on
+   one), and its end, returned: bytes, or past at a multiple of unit (unit
+   0: the farthest it may reach, for the caller to cut), never more than
+   JANAS_M_REGION_MAX from *from. */
+uint64_t janas_m_import_next(uint64_t at, uint64_t bytes, uint64_t unit,
+                             int huge, uint64_t *from);
 int janas_m_gpu_import(struct janas_llm_model *m, const uint8_t *p,
                        uint64_t bytes, uint64_t unit);
 void janas_m_arena_to_gpu(struct janas_llm_model *m);

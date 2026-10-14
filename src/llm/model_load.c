@@ -1550,8 +1550,6 @@ uint64_t janas_llm_model_warm(const struct janas_llm_model *m, double *seconds)
 /* The GPU region of 4 GB at the most: cut at a multiple of unit (an
    expert slot), or for the resident region (unit 0) where a tensor
    begins, so that no tensor straddles two and each stays in reach */
-#define GPU_REGION_MAX ((uint64_t)4 << 30)
-
 /*
  * Memory the GPU imports, collapsed into huge pages first: the GPU's own
  * page tables map it in 2 MB pages only where it is on them and the region
@@ -1598,38 +1596,53 @@ void janas_m_huge_pages(void *p, uint64_t bytes)
 #endif
 }
 
-static uint64_t resident_cut(const struct janas_llm_model *m, uint64_t from)
+/* The last tensor boundary of the resident memory past from and at most
+   room further (from + room if none). */
+static uint64_t resident_cut(const struct janas_llm_model *m, uint64_t from,
+                             uint64_t room)
 {
     uint64_t base = m->j.h.resident_offset, best = from;
     for (uint64_t i = 0; i < m->j.h.n_tensor; i++) {
         uint64_t at = m->j.tensors[i].offset - base;
-        if (at > from && at <= from + GPU_REGION_MAX && at > best)
+        if (at > from && at <= from + room && at > best)
             best = at;
     }
-    return best > from ? best : from + GPU_REGION_MAX;
+    return best > from ? best : from + room;
+}
+
+/*
+ * Each region from a 2 MB boundary (the memory is allocated on one),
+ * overlapping the one before by what it takes: the GPU maps only such
+ * regions in huge pages (janas_m_huge_pages). The overlap counts in the
+ * region's length: from 13 October 2026, when the regions began on 2 MB
+ * boundaries, until 14 October it did not, and a region past the first
+ * could come to more than the 4 GiB the GPU takes - Qwen3.6-35B-A3B's
+ * MXFP4_MOE file, slots of 1,671,168 bytes, the arena's second region 4 GiB
+ * and 1.9 MB (its Q4_K_M at six bits the third): refused, and the experts
+ * of a cache holding more than 4 GiB (8 GiB) stayed off the GPU.
+ */
+uint64_t janas_m_import_next(uint64_t at, uint64_t bytes, uint64_t unit,
+                             int huge, uint64_t *from)
+{
+    *from = huge ? at / JANAS_HUGE_PAGE * JANAS_HUGE_PAGE : at;
+    uint64_t room = JANAS_M_REGION_MAX - (at - *from);
+    if (bytes - at <= room)
+        return bytes;
+    return unit && room >= unit ? at + room / unit * unit : at + room;
 }
 
 int janas_m_gpu_import(struct janas_llm_model *m, const uint8_t *p,
                        uint64_t bytes, uint64_t unit)
 {
+    int huge =
+        ((uintptr_t)p & (JANAS_HUGE_PAGE - 1)) == 0 &&
+        !(getenv("JANAS_GPU_HUGE") && atoi(getenv("JANAS_GPU_HUGE")) == 0);
     for (uint64_t at = 0; at < bytes;) {
-        uint64_t end = at + GPU_REGION_MAX;
-        if (end >= bytes)
-            end = bytes;
-        else if (unit)
-            end = at + GPU_REGION_MAX / unit * unit;
-        else
-            end = resident_cut(m, at);
-        if (end > bytes)
-            end = bytes;
-        /* each region from a 2 MB boundary (the memory is allocated on
-           one), overlapping the one before by what it takes: the GPU maps
-           only such regions in huge pages (janas_m_huge_pages); whole
-           pages, the last one's length rounded up (the allocations are) */
-        uint64_t from = at;
-        if (((uintptr_t)p & (JANAS_HUGE_PAGE - 1)) == 0 &&
-            !(getenv("JANAS_GPU_HUGE") && atoi(getenv("JANAS_GPU_HUGE")) == 0))
-            from = at / JANAS_HUGE_PAGE * JANAS_HUGE_PAGE;
+        uint64_t from, end = janas_m_import_next(at, bytes, unit, huge, &from);
+        if (!unit && end < bytes)
+            end = resident_cut(m, at, end - at);
+        /* whole pages, the last one's length rounded up (the allocations
+           are) */
         uint64_t len = (end - from + 4095) & ~(uint64_t)4095;
         if (janas_gpu_import(m->gpu, p + from, len) != 0)
             return -1;

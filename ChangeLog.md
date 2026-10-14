@@ -2,6 +2,12 @@
 
 > Curated, user-facing summary of completed work, newest first.
 
+## [2026-10-14] - MXFP4 on the GPU, and the experts of a large cache back on it
+
+- **A mixture's experts reach the GPU again when the expert cache holds more than 4 GiB of them.** Since the release of 13 October the memory the GPU reads is given to it in regions that start on 2 MB boundaries, each overlapping the one before, and the overlap was not counted in the 4 GiB a region may take: past the first, a region could come to a little more, which the GPU refused, and the expert cache was then not given to it at all. On an integrated GPU a mixture's experts stayed on the CPU, in the fast prompt and in the block read whole on the GPU, whenever the cache held more than about 4 GiB of experts, depending on the size of an expert: Qwen3.6-35B-A3B's MXFP4_MOE file beyond 4 GiB, its Q4_K_M at six bits beyond 8 GiB. Each region counts its overlap now, and `tests/test_import_regions` checks them.
+- **MXFP4 on the GPU**, which only the CPU read since this morning's MXFP4 products: the products of one vector to a few, to the same bits as the CPU; the fast prompt's tiles; and a mixture's MXFP4 experts in one launch per layer, the layer read whole on the GPU. noctrex's Qwen3.6-35B-A3B-MXFP4_MOE read in blocks of 100 with the GPU, against llama.cpp on the same file: 200 of 200 most likely tokens agree, mean logit difference 0.106 (on the CPU, token by token: 199, 0.105).
+
+
 ## [2026-10-14] - An integrated GPU no longer kept awake for single tokens
 
 - **The GPU is kept awake only for the passes it takes.** On an integrated GPU a reply's single tokens stay on the CPU, but a configuration with the GPU kept it awake for them too - an empty dispatch every half millisecond - and on a laptop the awake GPU takes the power the cores need: janas-bench's "+ GPU" rows wrote a reply slower than the CPU alone, 10.5 tokens/s against 17.3 on a Radeon 780M (issue #16, reported by dlahoza), 2-5% slower on the development laptop's Arc. Now they write as fast (Qwen3-4B, 20, 12 and 6 threads: 28.5/28.1, 28.0/28.0 and 26.3/26.3 tokens/s with "+ GPU", 28.5/28.3, 28.1/28.0 and 26.3/26.3 without, two alternated runs). A chat's own choices were not affected: the tuner gives single tokens to the GPU only where it takes them, a discrete GPU. janas-bench's note says that the single tokens are the CPU's in every row where so.
