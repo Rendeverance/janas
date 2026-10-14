@@ -305,7 +305,18 @@ static void examine(VkPhysicalDevice pd, int index, struct dev *d)
     if (!d->bda || !d->idp || !d->ballot)
         snprintf(d->why, sizeof(d->why),
                  "no buffer addresses, integer dot product or ballot");
-    else if (!discrete && !d->host_import)
+    else if (!d->arith || !d->clustered || !d->shuffle) {
+        /* as the engine says it (gpu.c) */
+        char miss[48] = "";
+        if (!d->arith)
+            strcat(miss, ", arithmetic");
+        if (!d->clustered)
+            strcat(miss, ", clustered");
+        if (!d->shuffle)
+            strcat(miss, ", shuffle");
+        snprintf(d->why, sizeof(d->why),
+                 "no %s subgroup operations in compute shaders", miss + 2);
+    } else if (!discrete && !d->host_import)
         snprintf(d->why, sizeof(d->why),
                  "integrated, without VK_EXT_external_memory_host");
     else if (d->family == UINT32_MAX)
@@ -331,10 +342,6 @@ static void examine(VkPhysicalDevice pd, int index, struct dev *d)
            discrete ? "with its own memory, the weights copied there"
                     : "reading the host's memory in place",
            d->sg);
-    if (!d->arith || !d->clustered || !d->shuffle)
-        printf("  but the shaders that need arithmetic, clustered or shuffle "
-               "subgroup operations would fail: the engine does not check "
-               "them yet\n");
 }
 
 /* The device opened for the tests, and one compute pipeline per shader. */

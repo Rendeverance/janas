@@ -169,7 +169,7 @@ static int pick_device(struct janas_gpu *g, uint32_t *family, char *err,
     const char *want_dev = getenv("JANAS_GPU_DEVICE");
     /* the first device turned down and why, for the message: a tester
        with a GPU the engine does not take has to be able to tell why */
-    char why[160] = "";
+    char why[192] = "";
 #define REJECT(what)                                                           \
     {                                                                          \
         if (!why[0])                                                           \
@@ -214,6 +214,27 @@ static int pick_device(struct janas_gpu *g, uint32_t *family, char *err,
                 !(p11.subgroupSupportedOperations &
                   VK_SUBGROUP_FEATURE_BALLOT_BIT))
                 REJECT("no buffer addresses, integer dot product or ballot")
+            /* besides ballot, 13 shaders use subgroup arithmetic, clustered
+               reductions or shuffles (expert_act, the DeltaNet steps,
+               attention, norms, RoPE, the subgroup-per-row products), all in
+               compute shaders: a device without one of them cannot build them
+               (vkcheck says the same) */
+            VkSubgroupFeatureFlags sg_ops =
+                (p11.subgroupSupportedStages & VK_SHADER_STAGE_COMPUTE_BIT)
+                    ? p11.subgroupSupportedOperations
+                    : 0;
+            char sg_miss[48] = "", sg_why[96];
+            if (!(sg_ops & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT))
+                strcat(sg_miss, ", arithmetic");
+            if (!(sg_ops & VK_SUBGROUP_FEATURE_CLUSTERED_BIT))
+                strcat(sg_miss, ", clustered");
+            if (!(sg_ops & VK_SUBGROUP_FEATURE_SHUFFLE_BIT))
+                strcat(sg_miss, ", shuffle");
+            snprintf(sg_why, sizeof(sg_why),
+                     "no %s subgroup operations in compute shaders",
+                     sg_miss + 2);
+            if (sg_miss[0])
+                REJECT(sg_why)
             /* sharing host memory: needed by an integrated GPU (it reads the
                weights where they are), optional for a discrete one (it gets a
                copy in its own memory) */
